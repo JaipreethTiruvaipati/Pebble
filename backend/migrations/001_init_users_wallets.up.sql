@@ -1,0 +1,1 @@
+-- TODO: implement 001_init_users_wallets.up.sql

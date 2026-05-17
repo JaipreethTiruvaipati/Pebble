@@ -1,0 +1,30 @@
+# CODEOWNERS — Pebble
+# GitHub enforces these rules automatically on every PR.
+# Format: <path-pattern> <github-username(s)>
+
+# Jaipreeth owns all backend
+/backend/                              @jaipreeth
+/backend/cmd/                          @jaipreeth
+/backend/internal/                     @jaipreeth
+/backend/pkg/                          @jaipreeth
+/backend/migrations/                   @jaipreeth
+/backend/tests/                        @jaipreeth
+/docker-compose.yml                    @jaipreeth
+/docker-compose.test.yml               @jaipreeth
+/Makefile                              @jaipreeth
+/go.mod                                @jaipreeth
+/go.sum                                @jaipreeth
+/.env.example                          @jaipreeth
+/.github/workflows/backend-ci.yml      @jaipreeth
+/.github/workflows/deploy.yml          @jaipreeth
+
+# Sainath owns all frontend
+/frontend/                             @sainath
+/.env.frontend.example                 @sainath
+/.github/workflows/frontend-ci.yml    @sainath
+
+# Both must approve any contracts/ or root config changes
+/contracts/                            @jaipreeth @sainath
+/README.md                             @jaipreeth @sainath
+/.github/CODEOWNERS                    @jaipreeth @sainath
+/.github/pull_request_template.md      @jaipreeth @sainath

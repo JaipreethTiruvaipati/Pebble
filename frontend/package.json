@@ -1,0 +1,14 @@
+{
+  "name": "pebble-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "lint": "eslint . --ext ts,tsx",
+    "test": "vitest"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

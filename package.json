@@ -1,0 +1,5 @@
+{
+  "name": "pebble",
+  "private": true,
+  "workspaces": ["frontend"]
+}

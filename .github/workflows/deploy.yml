@@ -1,0 +1,45 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches: [main]
+
+# TODO (Jaipreeth — Phase 2): fill in ECR registry and ECS cluster details
+# Required secrets: AWS_DEPLOY_ROLE, ECR_REGISTRY
+jobs:
+  deploy:
+    name: Build, Push & Deploy
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - bill-service
+          - scoring-service
+          - penalty-service
+          - investment-service
+          - market-poller
+          - notification-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ap-south-1
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        run: |
+          IMAGE=${{ secrets.ECR_REGISTRY }}/pebble-${{ matrix.service }}:${{ github.sha }}
+          docker build -t $IMAGE -f backend/cmd/${{ matrix.service }}/Dockerfile .
+          docker push $IMAGE
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster pebble-prod \
+            --service ${{ matrix.service }} \
+            --force-new-deployment
