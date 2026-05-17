@@ -38,6 +38,11 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, jwtManager *auth.JWTM
 			r.Post("/logout", handleLogout())
 		})
 
+		// Webhooks (Public but secured via signature)
+		r.Route("/webhooks", func(r chi.Router) {
+			r.Post("/razorpay", handleRazorpayWebhook(cfg))
+		})
+
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(jwtManager))
@@ -62,7 +67,19 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, jwtManager *auth.JWTM
 				r.Put("/{id}/score", handleOverrideScore(dbPool))
 			})
 
-			// Further routes will go here (wallet, etc.)
+			// Penalties
+			r.Route("/penalties", func(r chi.Router) {
+				r.Get("/", handleListPenalties(dbPool))
+				r.Post("/{id}/contest", handleContestPenalty(dbPool))
+				r.Post("/{id}/confirm", handleConfirmPenaltyEarly(dbPool))
+			})
+
+			// Wallet
+			r.Route("/wallet", func(r chi.Router) {
+				r.Get("/balance", handleGetWalletBalance(dbPool))
+				r.Post("/topup", handleWalletTopup(dbPool))
+				r.Get("/ledger", handleGetWalletLedger(dbPool))
+			})
 		})
 	})
 
@@ -117,6 +134,64 @@ func handleOverrideScore(dbPool *pgxpool.Pool) http.HandlerFunc {
 			"message": "score successfully overridden",
 			"user_overridden": true,
 		})
+	}
+}
+
+// ── Penalty Handlers (Stubs) ────────────────────────────────────────────────
+
+func handleListPenalties(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
+	}
+}
+
+func handleContestPenalty(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		httputil.RespondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "contested"})
+	}
+}
+
+func handleConfirmPenaltyEarly(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		httputil.RespondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "confirmed"})
+	}
+}
+
+// ── Wallet Handlers (Stubs) ─────────────────────────────────────────────────
+
+func handleGetWalletBalance(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.RespondJSON(w, http.StatusOK, map[string]float64{
+			"balance":        1500.50,
+			"pending_total":  145.50,
+			"invested_total": 5000.00,
+		})
+	}
+}
+
+func handleWalletTopup(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Expects Razorpay payment token in body
+		httputil.RespondJSON(w, http.StatusOK, map[string]string{"message": "topup successful"})
+	}
+}
+
+func handleGetWalletLedger(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
+	}
+}
+
+// ── Webhook Handlers ────────────────────────────────────────────────────────
+
+func handleRazorpayWebhook(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 1. Read body
+		// 2. Verify signature using pkg/payment
+		// 3. Process payment success/failure
+		httputil.RespondJSON(w, http.StatusOK, map[string]string{"status": "received"})
 	}
 }
 
