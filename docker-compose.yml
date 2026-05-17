@@ -1,1 +1,139 @@
+version: "3.9"
 
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: pebble-postgres
+    environment:
+      POSTGRES_USER: ss
+      POSTGRES_PASSWORD: ss
+      POSTGRES_DB: pebble
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ss -d pebble"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: pebble-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: pebble-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # management UI: http://localhost:15672 (ss/ss)
+    environment:
+      RABBITMQ_DEFAULT_USER: ss
+      RABBITMQ_DEFAULT_PASS: ss
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: backend/cmd/api-gateway/Dockerfile
+    container_name: pebble-api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file: .env.local
+    restart: unless-stopped
+
+  bill-service:
+    build:
+      context: .
+      dockerfile: backend/cmd/bill-service/Dockerfile
+    container_name: pebble-bill-service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    env_file: .env.local
+    restart: unless-stopped
+
+  scoring-service:
+    build:
+      context: .
+      dockerfile: backend/cmd/scoring-service/Dockerfile
+    container_name: pebble-scoring-service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env.local
+    restart: unless-stopped
+
+  penalty-service:
+    build:
+      context: .
+      dockerfile: backend/cmd/penalty-service/Dockerfile
+    container_name: pebble-penalty-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file: .env.local
+    restart: unless-stopped
+
+  investment-service:
+    build:
+      context: .
+      dockerfile: backend/cmd/investment-service/Dockerfile
+    container_name: pebble-investment-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file: .env.local
+    restart: unless-stopped
+
+  market-poller:
+    build:
+      context: .
+      dockerfile: backend/cmd/market-poller/Dockerfile
+    container_name: pebble-market-poller
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file: .env.local
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: backend/cmd/notification-service/Dockerfile
+    container_name: pebble-notification-service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    env_file: .env.local
+    restart: unless-stopped
+
+volumes:
+  pgdata:
