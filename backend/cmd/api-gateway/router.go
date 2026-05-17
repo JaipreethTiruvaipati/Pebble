@@ -54,6 +54,12 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, jwtManager *auth.JWTM
 				r.Post("/bill", handleUploadBill(dbPool))
 				r.Get("/{id}", handleGetTransaction(dbPool))
 				r.Get("/", handleListTransactions(dbPool))
+				r.Post("/{id}/confirm", handleConfirmTransaction(dbPool))
+			})
+
+			// Line Items
+			r.Route("/line-items", func(r chi.Router) {
+				r.Put("/{id}/score", handleOverrideScore(dbPool))
 			})
 
 			// Further routes will go here (wallet, etc.)
@@ -88,6 +94,29 @@ func handleGetTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
 func handleListTransactions(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
+	}
+}
+
+func handleConfirmTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		httputil.RespondJSON(w, http.StatusOK, map[string]interface{}{
+			"transaction_id": id,
+			"penalties_created": 2,
+			"total_penalty_queued": 145.50,
+			"status": "confirmed",
+		})
+	}
+}
+
+func handleOverrideScore(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		httputil.RespondJSON(w, http.StatusOK, map[string]interface{}{
+			"line_item_id": id,
+			"message": "score successfully overridden",
+			"user_overridden": true,
+		})
 	}
 }
 

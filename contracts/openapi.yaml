@@ -1,0 +1,64 @@
+openapi: 3.0.3
+info:
+  title: Pebble API
+  description: API definitions for the Pebble project, shared between Go backend and React frontend.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local Dev Server
+
+paths:
+  /auth/login:
+    post:
+      summary: Login via email/password
+      responses:
+        '200':
+          description: Successful login
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /transactions/{id}/confirm:
+    post:
+      summary: Confirm a scored transaction to queue penalties
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Penalties confirmed
+
+  /line-items/{id}/score:
+    put:
+      summary: Override the AI impulse score for a line item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                override_score:
+                  type: integer
+
+components:
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user_id:
+          type: string

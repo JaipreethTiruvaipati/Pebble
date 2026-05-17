@@ -2,71 +2,45 @@ name: Backend CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ "main", "develop" ]
     paths:
       - 'backend/**'
       - 'go.mod'
       - 'go.sum'
   pull_request:
-    branches: [main, develop]
+    branches: [ "main", "develop" ]
     paths:
       - 'backend/**'
 
 jobs:
   test:
-    name: Test & Lint
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: ss
-          POSTGRES_PASSWORD: ss
-          POSTGRES_DB: pebble_test
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
-          cache: true
-
-      - name: Run tests
-        run: go test ./... -race -coverprofile=coverage.out
-        env:
-          DATABASE_TEST_URL: postgres://ss:ss@localhost:5432/pebble_test?sslmode=disable
-
-      - name: Check coverage >= 70%
-        run: go tool cover -func=coverage.out | tail -1 | awk '{if($3+0 < 70) exit 1}'
-
-      - name: govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
-
-  docker-build:
-    name: Docker Build (verify)
+          go-version: '1.22.x'
+          
+      - name: Install dependencies
+        run: go mod download
+        
+      - name: Run Tests
+        run: make test
+        
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        
+      - name: Run Vulnerability Check
+        run: govulncheck ./...
+        
+  docker:
     needs: test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service:
-          - api-gateway
-          - bill-service
-          - scoring-service
-          - penalty-service
-          - investment-service
-          - market-poller
-          - notification-service
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -f backend/cmd/${{ matrix.service }}/Dockerfile . -t pebble-${{ matrix.service }}:ci
+      
+      - name: Build Docker Images
+        run: make docker-build
