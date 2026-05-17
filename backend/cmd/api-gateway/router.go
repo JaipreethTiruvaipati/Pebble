@@ -48,11 +48,47 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, jwtManager *auth.JWTM
 				httputil.RespondJSON(w, http.StatusOK, map[string]interface{}{"user_id": userID})
 			})
 
-			// Further routes will go here (bills, transactions, wallet, etc.)
+			// Transactions
+			r.Route("/transactions", func(r chi.Router) {
+				r.Post("/", handleCreateTransaction(dbPool))
+				r.Post("/bill", handleUploadBill(dbPool))
+				r.Get("/{id}", handleGetTransaction(dbPool))
+				r.Get("/", handleListTransactions(dbPool))
+			})
+
+			// Further routes will go here (wallet, etc.)
 		})
 	})
 
 	return r
+}
+
+// ── Transaction Handlers (Stubs) ─────────────────────────────────────────────
+
+func handleCreateTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.RespondJSON(w, http.StatusCreated, map[string]string{"message": "transaction created manually"})
+	}
+}
+
+func handleUploadBill(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Acts as a proxy to the bill-service, or simply puts the job on the queue
+		httputil.RespondJSON(w, http.StatusAccepted, map[string]string{"message": "bill uploaded and queued for processing"})
+	}
+}
+
+func handleGetTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+		httputil.RespondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "scored"})
+	}
+}
+
+func handleListTransactions(dbPool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
+	}
 }
 
 // ── Auth Handlers (Stubs for now, will implement DB queries later) ──────
