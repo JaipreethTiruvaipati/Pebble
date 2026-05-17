@@ -1,1 +1,2 @@
--- TODO: implement 001_init_users_wallets.down.sql
+DROP TABLE IF EXISTS wallets;
+DROP TABLE IF EXISTS users;

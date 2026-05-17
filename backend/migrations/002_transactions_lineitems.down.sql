@@ -1,1 +1,2 @@
--- TODO: implement 002_transactions_lineitems.down.sql
+DROP TABLE IF EXISTS line_items;
+DROP TABLE IF EXISTS transactions;
