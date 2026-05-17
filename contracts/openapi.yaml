@@ -53,6 +53,58 @@ paths:
                 override_score:
                   type: integer
 
+  /penalties:
+    get:
+      summary: List all pending penalties
+      responses:
+        '200':
+          description: A list of penalties
+  /penalties/{id}/contest:
+    post:
+      summary: Contest an AI score
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status updated to contested
+  /penalties/{id}/confirm:
+    post:
+      summary: Confirm a penalty early
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Status updated to confirmed
+
+  /wallet/balance:
+    get:
+      summary: Get user wallet balance and pending penalties
+      responses:
+        '200':
+          description: Wallet balance info
+  /wallet/topup:
+    post:
+      summary: Add money to wallet via Razorpay
+      responses:
+        '200':
+          description: Topup initiated
+  /wallet/ledger:
+    get:
+      summary: Get wallet transaction history
+      responses:
+        '200':
+          description: List of wallet transactions
+
 components:
   schemas:
     AuthResponse:
