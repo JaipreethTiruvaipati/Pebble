@@ -29,7 +29,7 @@ func NewGeminiClient(ctx context.Context, apiKey string) (*GeminiClient, error) 
 	if apiKey == "" {
 		return nil, fmt.Errorf("GEMINI_API_KEY is not set")
 	}
-	
+
 	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create gemini client: %w", err)
@@ -43,15 +43,15 @@ func (g *GeminiClient) Close() {
 	g.client.Close()
 }
 
-// ExtractAndScore takes the raw messy text from Google Vision OCR and uses Gemini to extract 
+// ExtractAndScore takes the raw messy text from Google Vision OCR and uses Gemini to extract
 // structured data and assign impulse scores in a single pass.
 func (g *GeminiClient) ExtractAndScore(ctx context.Context, rawOCRText string) (*ReceiptExtraction, error) {
 	// We use gemini-1.5-flash as it is extremely fast and great at JSON extraction
 	model := g.client.GenerativeModel("gemini-1.5-flash")
-	
+
 	// Force the model to return valid JSON
 	model.ResponseMIMEType = "application/json"
-	
+
 	prompt := `
 You are an expert Indian financial assistant. You will be given raw, unstructured text extracted from an Indian shopping receipt via OCR.
 Your job is to parse this text into a strict JSON format.
