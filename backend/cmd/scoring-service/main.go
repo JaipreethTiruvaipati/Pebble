@@ -8,6 +8,7 @@ import (
 
 	"github.com/jaipreeth/pebble/backend/internal/config"
 	"github.com/jaipreeth/pebble/backend/internal/queue"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -19,9 +20,19 @@ type BillUploadedEvent struct {
 
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Str("service", "scoring-service").Logger()
 
 	log.Info().Msg("starting scoring-service...")
+
+	// Setup Prometheus metrics endpoint
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		log.Info().Msg("metrics server listening on :9091")
+		if err := http.ListenAndServe(":9091", mux); err != nil {
+			log.Error().Err(err).Msg("metrics server failed")
+		}
+	}()
 
 	cfg, err := config.Load()
 	if err != nil {

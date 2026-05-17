@@ -9,6 +9,7 @@ import (
 	"github.com/jaipreeth/pebble/backend/internal/auth"
 	"github.com/jaipreeth/pebble/backend/internal/config"
 	"github.com/jaipreeth/pebble/backend/internal/httputil"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // SetupRouter configures the Chi router and all API routes.
@@ -26,6 +27,9 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, jwtManager *auth.JWTM
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// Prometheus Metrics
+	r.Handle("/metrics", promhttp.Handler())
 
 	// API v1
 	r.Route("/api/v1", func(r chi.Router) {

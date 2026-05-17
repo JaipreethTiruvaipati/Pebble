@@ -17,7 +17,7 @@ import (
 func main() {
 	// Configure JSON logger
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Str("service", "api-gateway").Logger()
 
 	log.Info().Msg("starting api-gateway...")
 
