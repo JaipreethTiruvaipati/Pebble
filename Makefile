@@ -2,7 +2,8 @@
 
 # ── Local dev ─────────────────────────────────────────────────────────────────
 run-gateway:
-	go run ./backend/cmd/api-gateway/...
+	@test -f .env.local || (echo "❌ Copy .env.example to .env.local first" && exit 1)
+	@set -a && . ./.env.local && set +a && go run ./backend/cmd/api-gateway/...
 
 run-bill:
 	go run ./backend/cmd/bill-service/...
@@ -23,11 +24,18 @@ run-notify:
 	go run ./backend/cmd/notification-service/...
 
 # ── Database ──────────────────────────────────────────────────────────────────
+# CLI: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+# Or:  brew install golang-migrate
+# api-gateway also runs migrations on startup if you skip this target.
+MIGRATE_BIN ?= $(shell command -v migrate 2>/dev/null || echo $(shell go env GOPATH)/bin/migrate)
+
 migrate:
-	migrate -path backend/migrations -database "$${DATABASE_URL}" up
+	@test -x "$(MIGRATE_BIN)" || (echo "❌ migrate not found. Run: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest" && exit 1)
+	@test -f .env.local || (echo "❌ Copy .env.example to .env.local first" && exit 1)
+	@set -a && . ./.env.local && set +a && $(MIGRATE_BIN) -path backend/migrations -database "$$DATABASE_URL" up
 
 migrate-down:
-	migrate -path backend/migrations -database "$${DATABASE_URL}" down 1
+	$(MIGRATE_BIN) -path backend/migrations -database "$$DATABASE_URL" down 1
 
 migrate-test:
 	migrate -path backend/migrations -database "$${DATABASE_TEST_URL}" up
