@@ -1,1 +1,2 @@
-// TODO: implement useNotifications.ts
+// TODO: integrate with backend
+

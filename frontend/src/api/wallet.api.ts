@@ -1,1 +1,2 @@
-// TODO: implement wallet.api.ts
+// TODO: integrate with backend
+

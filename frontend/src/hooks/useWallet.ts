@@ -1,1 +1,2 @@
-// TODO: implement useWallet.ts
+// TODO: integrate with backend
+

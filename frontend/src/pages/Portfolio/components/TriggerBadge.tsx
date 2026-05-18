@@ -1,1 +1,0 @@
-// TODO: implement TriggerBadge.tsx
