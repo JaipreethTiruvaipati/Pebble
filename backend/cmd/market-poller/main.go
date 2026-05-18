@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/jaipreeth/pebble/backend/internal/cache"
 	"github.com/jaipreeth/pebble/backend/internal/config"
 	"github.com/jaipreeth/pebble/backend/pkg/market"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -23,9 +25,15 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load config")
 	}
-	_ = cfg // Phase 2: Use to connect to Redis
 
-	// Setup Prometheus metrics endpoint
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	redisClient, err := cache.Connect(ctx, cfg.RedisURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("redis connection failed")
+	}
+	defer redisClient.Close()
+
 	go func() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
@@ -35,17 +43,12 @@ func main() {
 		}
 	}()
 
-	// 15-minute ticker for all market data
 	go func() {
+		pollMarkets(redisClient)
 		ticker := time.NewTicker(15 * time.Minute)
 		defer ticker.Stop()
-		
-		// Run once immediately on startup
-		pollMarkets()
-		
-		for {
-			<-ticker.C
-			pollMarkets()
+		for range ticker.C {
+			pollMarkets(redisClient)
 		}
 	}()
 
@@ -55,21 +58,24 @@ func main() {
 	log.Info().Msg("shutting down market-poller...")
 }
 
-func pollMarkets() {
+func pollMarkets(redis *cache.Client) {
 	log.Info().Msg("polling market data (NSE, MCX, CCIL, AMFI)...")
-	
-	// 1. Fetch live data
+
 	_ = market.FetchNSEData()
 	_ = market.FetchMCXData()
 	_ = market.FetchCCILData()
 	_ = market.FetchAMFIData()
-	
-	// 2. Compute Signals
-	signals, _ := market.ComputeOpportunitySignals(nil, nil, nil)
-	log.Info().Int("signals_computed", len(signals)).Msg("computed opportunity signals")
-	
-	// 3. Save to Redis
-	// TODO: Write signals to cache.KeyMarketSignals
-	
-	log.Info().Msg("market data cached in Redis successfully")
+
+	signals, err := market.ComputeOpportunitySignals(nil, nil, nil)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to compute opportunity signals")
+		return
+	}
+
+	ctx := context.Background()
+	if err := redis.SetJSON(ctx, cache.KeyMarketSignals, signals, time.Hour); err != nil {
+		log.Error().Err(err).Msg("failed to cache market signals")
+		return
+	}
+	log.Info().Int("signals", len(signals)).Msg("market signals cached in Redis")
 }

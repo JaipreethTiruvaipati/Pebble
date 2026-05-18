@@ -7,13 +7,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jaipreeth/pebble/backend/internal/auth"
+	"github.com/jaipreeth/pebble/backend/internal/cache"
 	"github.com/jaipreeth/pebble/backend/internal/config"
 	"github.com/jaipreeth/pebble/backend/internal/httputil"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // SetupRouter configures the Chi router and all API routes.
-func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, jwtManager *auth.JWTManager, otpService *auth.OTPService) *chi.Mux {
+func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, jwtManager *auth.JWTManager, otpService *auth.OTPService) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global Middleware
@@ -84,6 +85,14 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, jwtManager *auth.JWTM
 				r.Post("/topup", handleWalletTopup(dbPool))
 				r.Get("/ledger", handleGetWalletLedger(dbPool))
 			})
+
+			// Portfolio & investments (Week 17)
+			r.Get("/portfolio", handleGetPortfolio(dbPool))
+			r.Route("/investments", func(r chi.Router) {
+				r.Get("/", handleListInvestments(dbPool))
+				r.Get("/{id}", handleGetInvestment(dbPool))
+			})
+			r.Get("/market/signal", handleGetMarketSignal(redis))
 		})
 	})
 

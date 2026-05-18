@@ -61,7 +61,27 @@ func main() {
 	})
 
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to start consumer")
+		log.Fatal().Err(err).Msg("failed to start penalty queued consumer")
+	}
+
+	// Consume investment executed events (Week 17)
+	err = rmq.Consume("notification.investments.executed", queue.TopicInvestmentsExecuted, func(body []byte) error {
+		var event queue.InvestmentExecutedEvent
+		if err := json.Unmarshal(body, &event); err != nil {
+			return err
+		}
+		log.Info().
+			Str("trigger", event.TriggerType).
+			Float64("total", event.TotalAmount).
+			Str("broker_ref", event.BrokerRef).
+			Int("investments", len(event.InvestmentIDs)).
+			Msg("dispatching investment confirmation via FCM and SES")
+		// TODO: FCM — "Rs X invested across equity, gold, bonds"
+		// TODO: SES — investment receipt email
+		return nil
+	})
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to start investments executed consumer")
 	}
 
 	quit := make(chan os.Signal, 1)

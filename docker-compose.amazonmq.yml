@@ -1,0 +1,37 @@
+# Optional overlay: point all services at Amazon MQ instead of local RabbitMQ.
+#
+# Usage:
+#   export RABBITMQ_URL='amqps://user:pass@your-broker.mq.ap-south-1.amazonaws.com:5671/'
+#   docker compose -f docker-compose.yml -f docker-compose.amazonmq.yml up -d
+#
+# Local RabbitMQ is NOT started when using this overlay.
+
+version: "3.9"
+
+services:
+  rabbitmq:
+    profiles: ["local-mq"]
+
+  api-gateway:
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}
+
+  bill-service:
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}
+
+  scoring-service:
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}
+
+  penalty-service:
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}
+
+  investment-service:
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}
+
+  notification-service:
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL}

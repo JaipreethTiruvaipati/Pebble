@@ -15,6 +15,8 @@ type Investment struct {
 	Units         float64   `json:"units"`
 	NAVAtPurchase float64   `json:"nav_at_purchase"`
 	Status        string    `json:"status"`
+	TriggerType   string    `json:"trigger_type,omitempty"`
+	BrokerRef     string    `json:"broker_ref,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 

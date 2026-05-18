@@ -6,25 +6,27 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// StartTimeTrigger ensures funds don't sit idle for too long.
-// It executes the pool on the 1st of every month at 9:00 AM IST.
+// ShouldRunMonthlySIP returns true when now is the 1st of the month at 9:00 AM in IST.
+func ShouldRunMonthlySIP(now time.Time, loc *time.Location) bool {
+	t := now.In(loc)
+	return t.Day() == 1 && t.Hour() == 9
+}
+
+// StartTimeTrigger executes the pool on the 1st of every month at 9:00 AM IST (SIP guarantee).
 func StartTimeTrigger() {
-	log.Info().Msg("started time trigger goroutine (1st of month)")
+	log.Info().Msg("started time trigger goroutine (1st of month, 9 AM IST)")
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
-	// Load India Standard Time timezone
 	ist, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
-		// Fallback to manual offset
 		ist = time.FixedZone("IST", 5*3600+1800)
 	}
 
 	for range ticker.C {
-		now := time.Now().In(ist)
-		// Check if it is the 1st day of the month and the hour is 9 AM
-		if now.Day() == 1 && now.Hour() == 9 {
-			ExecutePool("monthly_time_trigger")
+		if ShouldRunMonthlySIP(time.Now(), ist) {
+			log.Info().Msg("monthly SIP window — executing pool")
+			ExecutePool("time")
 		}
 	}
 }

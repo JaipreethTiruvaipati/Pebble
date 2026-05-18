@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jaipreeth/pebble/backend/internal/auth"
+	"github.com/jaipreeth/pebble/backend/internal/cache"
 	"github.com/jaipreeth/pebble/backend/internal/config"
 	"github.com/jaipreeth/pebble/backend/internal/db"
 	"github.com/rs/zerolog"
@@ -43,8 +44,14 @@ func main() {
 	}
 	otpService := auth.NewOTPService(cfg)
 
+	redisClient, err := cache.Connect(ctx, cfg.RedisURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("redis connection failed")
+	}
+	defer redisClient.Close()
+
 	// 4. Setup Router
-	r := SetupRouter(cfg, dbPool, jwtManager, otpService)
+	r := SetupRouter(cfg, dbPool, redisClient, jwtManager, otpService)
 
 	// 5. Start Server
 	srv := NewServer(cfg.Port, r)
