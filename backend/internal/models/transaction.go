@@ -1,3 +1,5 @@
+// Package models defines domain structs that map to Pebble PostgreSQL tables and API JSON bodies.
+// Transaction types model the bill → LLM score → penalty pipeline.
 package models
 
 import (
@@ -6,8 +8,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// Transaction represents a single logged UPI payment.
-// Maps to the 'transactions' table.
+// Transaction is a logged UPI payment awaiting or after LLM receipt scoring.
+// Maps to transactions; status progresses pending → scored.
 type Transaction struct {
 	ID          uuid.UUID  `json:"id"`
 	UserID      uuid.UUID  `json:"user_id"`
@@ -21,8 +23,8 @@ type Transaction struct {
 	LineItems []LineItem `json:"line_items,omitempty"`
 }
 
-// LineItem represents a single item extracted from a receipt and scored.
-// Maps to the 'line_items' table.
+// LineItem is one receipt line with an LLM-assigned impulse score.
+// Maps to line_items; high scores above penalty_threshold trigger penalties.
 type LineItem struct {
 	ID            uuid.UUID `json:"id"`
 	TransactionID uuid.UUID `json:"transaction_id"`
@@ -38,8 +40,8 @@ type LineItem struct {
 	OverrideScore  *int `json:"override_score,omitempty"` // User's manual score correction
 }
 
-// ScoredItem is a specialized struct used during the LLM scoring pipeline.
-// It's the JSON structure we expect the Gemini API to return.
+// ScoredItem is the JSON shape returned by Gemini during bill-service scoring.
+// Converted to LineItem rows via queries.InsertLineItem before MarkTransactionScored.
 type ScoredItem struct {
 	Name      string  `json:"name"`
 	Amount    float64 `json:"amount"`

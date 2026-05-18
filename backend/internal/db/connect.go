@@ -1,3 +1,6 @@
+// Package db provides PostgreSQL connectivity and schema migration helpers for Pebble services.
+// Every backend microservice (api-gateway, bill-service, penalty-service, etc.) calls Connect
+// at startup to obtain a shared pgxpool.Pool used by internal/db/queries.
 package db
 
 import (
@@ -10,10 +13,21 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Connect establishes a connection pool to the PostgreSQL database.
-// It verifies the connection with a Ping before returning.
-// We use pgxpool instead of standard database/sql because pgx is significantly
-// faster and provides native support for PostgreSQL-specific features (like JSONB).
+// Connect establishes a verified connection pool to the Pebble PostgreSQL database.
+//
+// Parameters:
+//   - ctx: cancellation context for pool creation and the initial health check
+//   - cfg: application config; DatabaseURL must be a valid postgres DSN
+//
+// Returns:
+//   - *pgxpool.Pool: a warmed pool (MinConns pre-allocated) ready for queries package calls
+//   - error: parse, dial, or ping failures; the pool is closed on ping failure
+//
+// How it works: parses cfg.DatabaseURL into pgxpool.Config, sets production-oriented pool
+// limits (25 max, 5 min, 1h lifetime), creates the pool, and Ping's before returning so
+// callers fail fast at boot rather than on the first user request. Pebble uses pgxpool
+// instead of database/sql for JSONB support and lower allocation overhead on hot paths
+// (transactions, penalties, pool_contributions).
 func Connect(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 	// Parse the connection string into a configuration object
 	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)

@@ -1,3 +1,8 @@
+// Package main runs the api-gateway microservice: the sole public HTTP entry point for
+// Pebble clients. It wires PostgreSQL, Redis, JWT auth, and Chi routes, then serves
+// REST under /api/v1. Downstream work (bill OCR, scoring, penalties, investments) is
+// triggered indirectly when handlers enqueue RabbitMQ events or when clients call
+// internal services; this process does not consume the event bus itself.
 package main
 
 import (
@@ -15,6 +20,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// main loads configuration, runs database migrations, connects to PostgreSQL and Redis,
+// builds the Chi router via SetupRouter, starts the HTTP server on cfg.Port, and shuts
+// down gracefully on SIGINT or SIGTERM.
 func main() {
 	// Configure JSON logger
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
@@ -43,6 +51,10 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialize JWT manager")
 	}
 	otpService := auth.NewOTPService(cfg)
+
+	if err := db.RunMigrations(cfg, "backend/migrations"); err != nil {
+		log.Fatal().Err(err).Msg("migrations failed")
+	}
 
 	redisClient, err := cache.Connect(ctx, cfg.RedisURL)
 	if err != nil {

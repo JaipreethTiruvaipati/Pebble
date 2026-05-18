@@ -1,3 +1,6 @@
+// Package main runs the market-poller microservice: periodically fetches NSE, MCX, CCIL, and
+// AMFI reference data, computes opportunity signals, and caches them in Redis for
+// investment-service triggers and api-gateway GET /market/signal. No RabbitMQ; side-effect is Redis only.
 package main
 
 import (
@@ -16,6 +19,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// main connects to Redis, polls markets immediately and every 15 minutes, serves Prometheus on :9094,
+// and shuts down on SIGINT/SIGTERM.
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Str("service", "market-poller").Logger()
@@ -43,6 +48,7 @@ func main() {
 		}
 	}()
 
+	// pollMarketsLoop runs an initial poll then every 15 minutes until shutdown.
 	go func() {
 		pollMarkets(redisClient)
 		ticker := time.NewTicker(15 * time.Minute)
@@ -58,6 +64,8 @@ func main() {
 	log.Info().Msg("shutting down market-poller...")
 }
 
+// pollMarkets fetches external market feeds, computes signals via pkg/market, and writes
+// cache.KeyMarketSignals to Redis with a one-hour TTL for downstream consumers.
 func pollMarkets(redis *cache.Client) {
 	log.Info().Msg("polling market data (NSE, MCX, CCIL, AMFI)...")
 

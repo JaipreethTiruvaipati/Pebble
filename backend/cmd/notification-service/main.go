@@ -1,3 +1,6 @@
+// Package main runs the notification-service microservice: the fan-out step for user-facing
+// alerts. It consumes wallet.penalty_queued, investments.executed, and streak.updated from
+// RabbitMQ and will dispatch FCM push and SES email (Phase 2). No HTTP API except Prometheus :9093.
 package main
 
 import (
@@ -14,6 +17,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// main connects to RabbitMQ, registers three consumers (penalty queued, investments executed,
+// streak updated), serves /metrics on :9093, and blocks until SIGINT/SIGTERM.
 func main() {
 	// Structured zerolog logging
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
@@ -42,7 +47,7 @@ func main() {
 	}
 	defer rmq.Close()
 
-	// Consume Penalty Queued events
+	// consumePenaltyQueued handles wallet.penalty_queued from penalty-service (pending consent alert).
 	err = rmq.Consume("notification.penalty.queued", queue.TopicWalletPenaltyQueued, func(body []byte) error {
 		var event queue.PenaltyQueuedEvent
 		if err := json.Unmarshal(body, &event); err != nil {
@@ -64,7 +69,7 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to start penalty queued consumer")
 	}
 
-	// Consume investment executed events (Week 17)
+	// consumeInvestmentsExecuted handles investments.executed from investment-service.
 	err = rmq.Consume("notification.investments.executed", queue.TopicInvestmentsExecuted, func(body []byte) error {
 		var event queue.InvestmentExecutedEvent
 		if err := json.Unmarshal(body, &event); err != nil {
@@ -83,6 +88,19 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to start investments executed consumer")
 	}
+
+	// consumeStreakUpdated handles streak.updated from scoring-service after a low-impulse week.
+	_ = rmq.Consume("notification.streak.updated", queue.TopicStreakUpdated, func(body []byte) error {
+		var event queue.StreakUpdatedEvent
+		if err := json.Unmarshal(body, &event); err != nil {
+			return err
+		}
+		log.Info().
+			Int("streak", event.StreakCount).
+			Str("user_id", event.UserID.String()).
+			Msg("streak milestone — notify user of discipline streak")
+		return nil
+	})
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

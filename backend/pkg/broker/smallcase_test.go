@@ -11,7 +11,13 @@ func TestNewSmallcaseClient_UsesSandboxByDefault(t *testing.T) {
 
 func TestExecuteTrade_Sandbox_NoError(t *testing.T) {
 	c := NewSmallcaseClient("test-key")
-	if err := c.ExecuteTrade("equity", 500.0); err != nil {
+	if err := c.ExecuteTrade("NIFTY50_ETF", 500.0); err != nil {
 		t.Fatalf("sandbox ExecuteTrade should not fail: %v", err)
+	}
+}
+
+func TestIsValidInstrument(t *testing.T) {
+	if !IsValidInstrument("GOLD_ETF") {
+		t.Fatal("GOLD_ETF should be valid")
 	}
 }

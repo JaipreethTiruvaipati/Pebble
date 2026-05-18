@@ -1,3 +1,4 @@
+// Package db provides PostgreSQL connectivity and schema migration helpers for Pebble services.
 package db
 
 import (
@@ -11,9 +12,21 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// RunMigrations executes all pending UP migrations.
-// It uses golang-migrate to apply SQL files from the migrations directory.
-// This is typically called on application startup or via a CLI command.
+// RunMigrations applies all pending UP SQL migrations from the Pebble migrations directory.
+//
+// Parameters:
+//   - cfg: application config; DatabaseURL targets the postgres instance to migrate
+//   - migrationsPath: absolute or relative filesystem path to backend/migrations (without file://)
+//
+// Returns:
+//   - nil when migrations succeed or the schema is already current (migrate.ErrNoChange)
+//   - error when migrate initialization or Up() fails for any other reason
+//
+// How it works: builds a golang-migrate instance with source file://{migrationsPath} and
+// applies every unapplied *.up.sql in version order (users, wallets, transactions, penalties,
+// pool_contributions, investments, referral_codes, streak indexes, etc.). Typically invoked
+// from api-gateway or Makefile on deploy so query code and schema stay aligned before
+// services accept traffic.
 func RunMigrations(cfg *config.Config, migrationsPath string) error {
 	log.Info().Str("path", migrationsPath).Msg("running database migrations...")
 

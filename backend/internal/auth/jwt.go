@@ -1,3 +1,7 @@
+// Package auth provides authentication primitives for Pebble: JWT access tokens,
+// HTTP middleware, OTP login, CORS, and distributed rate limiting. This file
+// implements RS256 JWT creation and verification used by the api-gateway after
+// phone OTP login and by RequireAuth on protected routes.
 package auth
 
 import (
@@ -11,20 +15,31 @@ import (
 	"github.com/jaipreeth/pebble/backend/internal/config"
 )
 
-// JWTManager handles signing and verifying RS256 JWTs.
+// JWTManager signs and verifies Pebble access tokens using RS256 asymmetric keys.
+// The api-gateway holds the private key and issues tokens; all services that
+// verify Bearer tokens only need the public key loaded from config.JWTPublicKeyPath.
 type JWTManager struct {
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
 	cfg        *config.Config
 }
 
-// CustomClaims represents the payload of our JWT.
+// CustomClaims is the JWT payload for Pebble access tokens.
+// UserID identifies the authenticated user; RegisteredClaims carry standard
+// expiry, issuer, and subject fields consumed by jwt/v5 during verification.
 type CustomClaims struct {
 	UserID uuid.UUID `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
-// NewJWTManager initializes the manager by loading the RSA keys from disk.
+// NewJWTManager loads RSA PEM key pairs from disk paths in cfg and returns a
+// manager ready to sign and verify tokens.
+//
+// Inputs: cfg with JWTPrivateKeyPath and JWTPublicKeyPath (typically from config.Load).
+// Outputs: *JWTManager on success, or an error if keys cannot be read or parsed.
+//
+// Called once at api-gateway startup; private key must never be distributed to
+// worker services—only the public key is needed for verification elsewhere.
 func NewJWTManager(cfg *config.Config) (*JWTManager, error) {
 	// Read Private Key
 	privBytes, err := os.ReadFile(cfg.JWTPrivateKeyPath)
@@ -53,7 +68,14 @@ func NewJWTManager(cfg *config.Config) (*JWTManager, error) {
 	}, nil
 }
 
-// GenerateToken creates a new JWT for a given user ID.
+// GenerateToken mints a short-lived access JWT for userID.
+//
+// Inputs: userID from the users table after successful OTP verification.
+// Outputs: signed JWT string, or error if signing fails.
+//
+// Embeds UserID in CustomClaims and sets ExpiresAt from cfg.JWTAccessExpiry,
+// Issuer "pebble-auth", and Subject to the user's UUID string. Used by login
+// and token refresh handlers in the api-gateway before returning tokens to clients.
 func (m *JWTManager) GenerateToken(userID uuid.UUID) (string, error) {
 	claims := CustomClaims{
 		UserID: userID,
@@ -71,7 +93,13 @@ func (m *JWTManager) GenerateToken(userID uuid.UUID) (string, error) {
 	return token.SignedString(m.privateKey)
 }
 
-// VerifyToken parses a JWT and validates its signature and expiration.
+// VerifyToken parses tokenStr, validates RS256 signature and expiry, and returns claims.
+//
+// Inputs: raw JWT from Authorization: Bearer header.
+// Outputs: *CustomClaims when valid; error on bad signature, wrong alg, or expired token.
+//
+// Rejects non-RSA signing methods to prevent algorithm downgrade attacks. RequireAuth
+// middleware calls this on every protected request and stores claims.UserID in context.
 func (m *JWTManager) VerifyToken(tokenStr string) (*CustomClaims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// Ensure the signing method is exactly RS256 (prevents downgrade attacks)

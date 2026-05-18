@@ -1,3 +1,7 @@
+// Package llm provides large-language-model integrations for Pebble receipt intelligence.
+//
+// gemini.go implements the Google Gemini client used by scoring-service after OCR:
+// raw receipt text in, structured merchant/items and impulse scores out.
 package llm
 
 import (
@@ -12,19 +16,24 @@ import (
 	"google.golang.org/api/option"
 )
 
-// GeminiClient handles interactions with Google's Gemini API.
+// GeminiClient wraps the official Google Generative AI SDK for Pebble.
+// scoring-service creates one at startup from GEMINI_API_KEY and passes it to processBillUploaded.
 type GeminiClient struct {
 	client *genai.Client
 }
 
-// ReceiptExtraction represents the structured data we expect back from Gemini.
+// ReceiptExtraction is the JSON shape Gemini returns for a single receipt parse pass.
+// Items use models.ScoredItem so results map directly to queries.InsertLineItem in scoring-service.
 type ReceiptExtraction struct {
 	Merchant    string              `json:"merchant"`
 	TotalAmount float64             `json:"total_amount"`
 	Items       []models.ScoredItem `json:"items"`
 }
 
-// NewGeminiClient initializes a new GenAI client.
+// NewGeminiClient authenticates with apiKey and returns a ready GeminiClient.
+//
+// Returns an error if apiKey is empty or the underlying genai client cannot be created.
+// scoring-service logs a warning and continues with OCR-only stubs when this fails.
 func NewGeminiClient(ctx context.Context, apiKey string) (*GeminiClient, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("GEMINI_API_KEY is not set")
@@ -38,13 +47,17 @@ func NewGeminiClient(ctx context.Context, apiKey string) (*GeminiClient, error) 
 	return &GeminiClient{client: client}, nil
 }
 
-// Close closes the underlying Gemini client.
+// Close releases SDK resources. scoring-service defers this after a successful NewGeminiClient.
 func (g *GeminiClient) Close() {
 	g.client.Close()
 }
 
-// ExtractAndScore takes the raw messy text from Google Vision OCR and uses Gemini to extract
-// structured data and assign impulse scores in a single pass.
+// ExtractAndScore sends rawOCRText (from pkg/ocr VisionClient) to gemini-1.5-flash with a
+// structured prompt and application/json response mode.
+//
+// The model extracts merchant, total, and line items with category, impulse score (0–100),
+// and reasoning. Output is unmarshaled into ReceiptExtraction for persistence by scoring-service.
+// Markdown code fences around JSON are stripped before parsing.
 func (g *GeminiClient) ExtractAndScore(ctx context.Context, rawOCRText string) (*ReceiptExtraction, error) {
 	// We use gemini-1.5-flash as it is extremely fast and great at JSON extraction
 	model := g.client.GenerativeModel("gemini-1.5-flash")

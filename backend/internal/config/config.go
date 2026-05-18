@@ -1,3 +1,6 @@
+// Package config loads and holds environment-backed settings for all Pebble backend
+// services. Load runs once at process start; services pass *Config instead of calling
+// os.Getenv so secrets, TTLs, and integration endpoints stay centralized and testable.
 package config
 
 import (
@@ -13,8 +16,9 @@ import (
 // It is loaded once at startup and passed around — never call os.Getenv directly in services.
 type Config struct {
 	// ── Server ────────────────────────────────────────────────────────────────
-	AppEnv string // "development" | "production"
-	Port   string // HTTP listen port (default: "8080")
+	AppEnv            string // "development" | "production"
+	Port              string // HTTP listen port (default: "8080")
+	CORSAllowedOrigins string // comma-separated browser origins
 
 	// ── Database ──────────────────────────────────────────────────────────────
 	DatabaseURL string // full PostgreSQL DSN: postgres://user:pass@host:port/db
@@ -57,9 +61,14 @@ type Config struct {
 	Msg91AuthKey string
 }
 
-// Load reads environment variables (from .env.local in dev, from the real environment in prod).
-// Required variables cause a panic — the service cannot start without them.
-// Optional variables fall back to sensible defaults.
+// Load reads environment variables and populates Config with required and optional values.
+//
+// Inputs: process environment; in development also .env.local via godotenv (ignored if missing).
+// Outputs: *Config and nil error on success; panic via mustGetEnv if DATABASE_URL, REDIS_URL,
+// or RABBITMQ_URL are unset.
+//
+// Every service main calls Load first, then passes cfg to auth, cache, db, and queue setup.
+// JWT paths, CORS origins, and broker keys flow into api-gateway; worker services use subsets.
 func Load() (*Config, error) {
 	// In development, load from .env.local. In production (ECS), vars come from Secrets Manager
 	// injected into the task environment — godotenv.Load will silently fail if file is missing.
@@ -67,8 +76,9 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		// Server
-		AppEnv: getEnv("APP_ENV", "development"),
-		Port:   getEnv("PORT", "8080"),
+		AppEnv:             getEnv("APP_ENV", "development"),
+		Port:               getEnv("PORT", "8080"),
+		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"),
 
 		// Database — required; the service is useless without it
 		DatabaseURL: mustGetEnv("DATABASE_URL"),
@@ -114,16 +124,25 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
-// IsDevelopment returns true when running locally.
+// IsDevelopment reports whether APP_ENV is "development".
+//
+// Inputs: receiver Config after Load.
+// Outputs: true for local dev behavior (e.g. OTP logged, relaxed defaults).
+//
+// Used by OTPService and handlers to skip external SMS charges and enable verbose paths.
 func (c *Config) IsDevelopment() bool {
 	return c.AppEnv == "development"
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// mustGetEnv panics if a required env var is missing.
-// This is intentional — a misconfigured service should fail loudly at startup,
-// not silently misbehave at runtime.
+// mustGetEnv returns os.Getenv(key) or panics if the variable is empty.
+//
+// Inputs: key name of a required setting (e.g. "DATABASE_URL").
+// Outputs: non-empty string value.
+//
+// Intentional fail-fast at startup so ECS/tasks with missing Secrets Manager bindings
+// exit immediately rather than serving broken requests.
 func mustGetEnv(key string) string {
 	v := os.Getenv(key)
 	if v == "" {
@@ -132,7 +151,10 @@ func mustGetEnv(key string) string {
 	return v
 }
 
-// getEnv returns the env var value or a fallback default.
+// getEnv returns the environment variable value or defaultVal when unset or empty.
+//
+// Inputs: key and fallback default for optional settings (PORT, CORS_ALLOWED_ORIGINS).
+// Outputs: resolved string used in Load to build Config.
 func getEnv(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -140,7 +162,10 @@ func getEnv(key, defaultVal string) string {
 	return defaultVal
 }
 
-// getEnvInt parses an integer env var with a default.
+// getEnvInt parses an integer environment variable or returns defaultVal.
+//
+// Inputs: key and default when missing or non-numeric.
+// Outputs: int for JWT expiry minutes, refresh days, and similar numeric env vars.
 func getEnvInt(key string, defaultVal int) int {
 	if v := os.Getenv(key); v != "" {
 		if i, err := strconv.Atoi(v); err == nil {

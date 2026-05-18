@@ -1,3 +1,5 @@
+// Package main (s3_upload.go) provides S3 receipt storage used before scoring-service
+// downloads the object for Google Vision OCR.
 package main
 
 import (
@@ -8,13 +10,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// S3Uploader handles uploading receipt images to AWS S3.
+// S3Uploader uploads receipt images to the configured AWS S3 bucket and region.
 type S3Uploader struct {
 	bucketName string
 	region     string
 }
 
-// NewS3Uploader creates a new uploader instance.
+// NewS3Uploader returns an uploader bound to bucketName in region.
 func NewS3Uploader(bucketName, region string) *S3Uploader {
 	return &S3Uploader{
 		bucketName: bucketName,
@@ -22,7 +24,7 @@ func NewS3Uploader(bucketName, region string) *S3Uploader {
 	}
 }
 
-// UploadImage uploads the image bytes and returns the S3 Key.
+// UploadImage stores fileBytes under receipts/{uuid}.jpg and returns the S3 object key.
 func (u *S3Uploader) UploadImage(ctx context.Context, fileBytes []byte, contentType string) (string, error) {
 	// Generate a unique filename
 	key := fmt.Sprintf("receipts/%s.jpg", uuid.New().String())

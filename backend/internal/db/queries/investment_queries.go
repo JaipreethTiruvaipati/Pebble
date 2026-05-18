@@ -1,3 +1,6 @@
+// Package queries encapsulates parameterized SQL access for Pebble domain tables.
+// Investment queries support portfolio APIs and the investment-service batch executor
+// that converts pooled penalty cash into per-user holdings.
 package queries
 
 import (
@@ -10,7 +13,8 @@ import (
 	"github.com/jaipreeth/pebble/backend/internal/models"
 )
 
-// PortfolioSummary aggregates a user's holdings by asset class.
+// PortfolioSummary aggregates a user's active investments by asset class for the dashboard.
+// GainPct is a placeholder until live NAV feeds are wired; Allocation maps class → % of total.
 type PortfolioSummary struct {
 	TotalInvested float64            `json:"total_invested"`
 	EquityValue   float64            `json:"equity_value"`
@@ -20,7 +24,21 @@ type PortfolioSummary struct {
 	Allocation    map[string]float64 `json:"allocation_pct"`
 }
 
-// ListInvestments returns investments for a user, optionally filtered by trigger_type.
+// ListInvestments returns a user's investment rows, optionally filtered by trigger type.
+//
+// Parameters:
+//   - ctx: query context
+//   - pool: shared PostgreSQL pool
+//   - userID: owner of the investments table rows
+//   - triggerType: when non-empty, filters investments.trigger_type (e.g. "threshold", "market_signal")
+//   - limit: max rows; values <= 0 default to 20
+//
+// Returns:
+//   - []models.Investment: newest first (created_at DESC)
+//   - error: query or scan failure
+//
+// Pebble flow: api-gateway GET /portfolio/investments reads this after JWT auth; rows map
+// to confirmed broker purchases created by MarkPoolInvested or manual top-up flows.
 func ListInvestments(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, triggerType string, limit int) ([]models.Investment, error) {
 	if limit <= 0 {
 		limit = 20
@@ -64,7 +82,19 @@ func ListInvestments(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID, 
 	return out, rows.Err()
 }
 
-// GetPortfolioSummary sums holdings by asset class for the authenticated user.
+// GetPortfolioSummary computes per-asset-class totals and allocation percentages for one user.
+//
+// Parameters:
+//   - ctx: query context
+//   - pool: shared PostgreSQL pool
+//   - userID: investments.user_id filter
+//
+// Returns:
+//   - *PortfolioSummary: aggregated values and allocation_pct map (empty when no holdings)
+//   - error: query or scan failure
+//
+// How it works: SUM(amount) GROUP BY asset_class for status='active', buckets into equity/gold/bonds,
+// then derives allocation percentages. Used by api-gateway portfolio summary endpoint.
 func GetPortfolioSummary(ctx context.Context, pool *pgxpool.Pool, userID uuid.UUID) (*PortfolioSummary, error) {
 	rows, err := pool.Query(ctx, `
 		SELECT asset_class, COALESCE(SUM(amount), 0)
@@ -115,7 +145,18 @@ func GetPortfolioSummary(ctx context.Context, pool *pgxpool.Pool, userID uuid.UU
 	return summary, nil
 }
 
-// SumPooledAmount returns total pooled cash awaiting investment.
+// SumPooledAmount returns the total INR sitting in pool_contributions awaiting batch investment.
+//
+// Parameters:
+//   - ctx: query context
+//   - pool: shared PostgreSQL pool
+//
+// Returns:
+//   - float64: COALESCE(SUM(amount), 0) where status='pooled'
+//   - error: query failure
+//
+// Pebble flow: investment-service checks this before ExecutePool; when sum >= user's
+// invest_threshold (aggregated), MarkPoolInvested runs broker allocation.
 func SumPooledAmount(ctx context.Context, pool *pgxpool.Pool) (float64, error) {
 	var sum float64
 	err := pool.QueryRow(ctx, `
@@ -123,7 +164,24 @@ func SumPooledAmount(ctx context.Context, pool *pgxpool.Pool) (float64, error) {
 	return sum, err
 }
 
-// MarkPoolInvested updates all pooled rows and inserts investment records for a batch execution.
+// MarkPoolInvested atomically allocates pooled penalty cash into per-user investments.
+//
+// Parameters:
+//   - ctx: transaction context
+//   - pool: shared PostgreSQL pool (begins a local tx)
+//   - triggerType: stored on each new investments row (e.g. "threshold")
+//   - brokerRef: external order reference from Smallcase/broker
+//   - splits: map of asset_class → total INR to deploy across the whole pool this batch
+//
+// Returns:
+//   - []uuid.UUID: IDs of inserted investments rows (one per user × asset class slice)
+//   - nil, nil when no pooled contributions exist
+//   - error: tx, insert, or update failure (rolled back)
+//
+// How it works: loads all pool_contributions with status='pooled', pro-rates each user's
+// share of splits by contribution amount, inserts investments with placeholder NAV/units,
+// then marks contributions invested. After commit, investment-service publishes
+// queue.TopicInvestmentsExecuted with the returned IDs.
 func MarkPoolInvested(ctx context.Context, pool *pgxpool.Pool, triggerType, brokerRef string, splits map[string]float64) ([]uuid.UUID, error) {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
@@ -202,7 +260,17 @@ func MarkPoolInvested(ctx context.Context, pool *pgxpool.Pool, triggerType, brok
 	return investmentIDs, nil
 }
 
-// GetInvestmentByID fetches a single investment scoped to the user.
+// GetInvestmentByID loads one investment row scoped to the authenticated user.
+//
+// Parameters:
+//   - ctx: query context
+//   - pool: shared PostgreSQL pool
+//   - userID: row owner (authorization guard)
+//   - investmentID: primary key
+//
+// Returns:
+//   - *models.Investment: populated row, or nil when not found
+//   - error: database errors other than no rows
 func GetInvestmentByID(ctx context.Context, pool *pgxpool.Pool, userID, investmentID uuid.UUID) (*models.Investment, error) {
 	var inv models.Investment
 	var trigger, brokerRef string

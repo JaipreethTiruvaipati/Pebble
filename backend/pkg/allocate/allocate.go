@@ -1,16 +1,28 @@
+// Package allocate implements signal-driven portfolio allocation for Pebble pooled investments.
+//
+// Penalty cash pooled by penalty-service is invested by investment-service. This package
+// converts market signals (cached by market-poller in Redis) into percentage weights
+// across equity, gold, and bonds before orders are sent to the broker layer.
 package allocate
 
 import "github.com/jaipreeth/pebble/backend/internal/models"
 
-// AllocationResult represents the final percentage distribution of pooled funds.
+// AllocationResult holds the final percentage distribution of pooled funds across
+// Pebble's three asset sleeves. Values are normalized to sum to 100 after clamping.
 type AllocationResult struct {
 	Equity float64
 	Gold   float64
 	Bonds  float64
 }
 
-// ComputeAllocation calculates the optimal spread based on market signals.
-// It applies clamping (min/max bounds) and normalizes the final array to equal 100%.
+// ComputeAllocation derives an equity/gold/bonds mix from market signals.
+//
+// It starts from a balanced baseline (40/20/40), applies per-signal adjustments
+// (e.g. equity BUY shifts weight from bonds), enforces safety clamps (equity 10–70%,
+// bonds and gold floors), then renormalizes so the three percentages sum to exactly 100.
+//
+// Called by ComputeBrokerOrders and indirectly by investment-service PoolExecutor
+// when Redis has no cached signals and defaults are used upstream.
 func ComputeAllocation(signals []models.MarketSignal) AllocationResult {
 	// Base safe allocation (balanced)
 	alloc := AllocationResult{
