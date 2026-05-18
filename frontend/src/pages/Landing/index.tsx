@@ -69,7 +69,7 @@ function TopBar() {
     <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-5 max-w-6xl mx-auto">
       <Link to={ROUTES.landing} className="font-display text-xl tracking-tight">Pebble</Link>
       <nav className="flex items-center gap-6 text-sm text-muted-foreground">
-        <Link to={ROUTES.dashboard} className="hover:text-foreground">Dashboard</Link>
+        <Link to={ROUTES.login} className="hover:text-foreground">Log in</Link>
         <Link to={ROUTES.signup} className="rounded-full bg-coral px-4 py-1.5 text-primary-foreground hover:brightness-110">Sign up</Link>
       </nav>
     </div>

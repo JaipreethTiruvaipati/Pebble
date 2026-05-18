@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { LayoutDashboard, ReceiptText, PieChart, BarChart3, Settings, History, Wallet, LogOut } from "lucide-react";
 import type { ReactNode } from "react";
 import { ROUTES } from "@/routes";
@@ -16,8 +16,9 @@ const nav = [
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -53,7 +54,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="truncate text-sm">{user.name}</div>
               <div className="truncate text-[11px] text-muted-foreground">{user.riskProfile} profile</div>
             </div>
-            <button className="text-muted-foreground hover:text-coral"><LogOut size={14} /></button>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-coral"
+              onClick={() => {
+                logout();
+                navigate({ to: ROUTES.login });
+              }}
+            >
+              <LogOut size={14} />
+            </button>
           </div>
         )}
       </aside>

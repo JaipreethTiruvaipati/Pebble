@@ -16,7 +16,9 @@ import appCss from "./styles.css?url";
 
 // Page imports
 import Landing from "./pages/Landing";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import { ProtectedRoute } from "./components/layout/ProtectedRoute";
 import Insights from "./pages/Insights";
 import LogTransaction from "./pages/LogTransaction";
 import Portfolio from "./pages/Portfolio";
@@ -141,11 +143,27 @@ const indexRoute = createRoute({
   component: Landing,
 });
 
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: ROUTES.login,
+  component: Login,
+});
+
 const signupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: ROUTES.signup,
   component: Signup,
 });
+
+function withAuth(Component: React.ComponentType) {
+  return function AuthWrapped() {
+    return (
+      <ProtectedRoute>
+        <Component />
+      </ProtectedRoute>
+    );
+  };
+}
 
 const onboardingRiskRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -162,41 +180,42 @@ const onboardingWalletRoute = createRoute({
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: ROUTES.dashboard,
-  component: Dashboard,
+  component: withAuth(Dashboard),
 });
 
 const logTransactionRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: ROUTES.logTransaction,
-  component: LogTransaction,
+  component: withAuth(LogTransaction),
 });
 
 const portfolioRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: ROUTES.portfolio,
-  component: Portfolio,
+  component: withAuth(Portfolio),
 });
 
 const insightsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: ROUTES.insights,
-  component: Insights,
+  component: withAuth(Insights),
 });
 
 const historyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: ROUTES.history,
-  component: TransactionHistory,
+  component: withAuth(TransactionHistory),
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: ROUTES.settings,
-  component: Settings,
+  component: withAuth(Settings),
 });
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  loginRoute,
   signupRoute,
   onboardingRiskRoute,
   onboardingWalletRoute,

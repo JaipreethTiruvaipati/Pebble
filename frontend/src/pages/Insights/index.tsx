@@ -4,29 +4,7 @@ import { CategoryBarChart } from "./components/CategoryBarChart";
 import { WeeklyDigest } from "./components/WeeklyDigest";
 import { PeerBenchmark } from "./components/PeerBenchmark";
 import { StreakCounter } from "./components/StreakCounter";
-import { topMerchants } from "@/lib/firebase";
-import { formatCurrency } from "@/lib/formatCurrency";
-import { scoreBgClass } from "@/lib/scoreColor";
-
-function TopMerchants() {
-  return (
-    <div className="rounded-3xl border border-border bg-card p-6">
-      <h3 className="text-lg">Top merchants</h3>
-      <ol className="mt-4 space-y-3">
-        {topMerchants.map((m, i) => (
-          <li key={m.merchant} className="flex items-center gap-4">
-            <span className="w-6 font-mono text-sm text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
-            <div className="flex-1">
-              <div className="text-sm">{m.merchant}</div>
-            </div>
-            <span className="font-mono text-sm">{formatCurrency(m.spend)}</span>
-            <span className={`rounded-full px-2 py-0.5 font-mono text-[11px] ${scoreBgClass(m.score)}`}>{m.score}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
+import { TopMerchants } from "./components/TopMerchants";
 
 export default function Insights() {
   return (

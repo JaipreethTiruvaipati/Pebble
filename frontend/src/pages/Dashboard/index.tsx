@@ -9,10 +9,14 @@ import { PortfolioMiniChart } from "./components/PortfolioMiniChart";
 import { MarketSignalIndicator } from "./components/MarketSignalIndicator";
 import { ImpulseStreakBadge } from "./components/ImpulseStreakBadge";
 import { ROUTES } from "@/routes";
+import { useEffect } from "react";
 import { useAuthStore } from "@/stores/authStore";
 
 export default function Dashboard() {
-  const { user } = useAuthStore();
+  const { user, loadProfile } = useAuthStore();
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
   return (
     <AppShell>
       <div className="mx-auto max-w-7xl p-6 md:p-10">

@@ -55,7 +55,7 @@ export function Hero() {
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
           <Button asChild size="lg" variant="coral"><Link to={ROUTES.signup}>Get started <ArrowRight size={16} /></Link></Button>
-          <Button asChild size="lg" variant="outline"><Link to={ROUTES.dashboard}>See dashboard</Link></Button>
+          <Button asChild size="lg" variant="outline"><Link to={ROUTES.login}>Log in</Link></Button>
         </div>
         <motion.div
           initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6, duration: 0.8 }}

@@ -19,6 +19,7 @@ type Config struct {
 	AppEnv            string // "development" | "production"
 	Port              string // HTTP listen port (default: "8080")
 	CORSAllowedOrigins string // comma-separated browser origins
+	BillServiceURL     string // bill upload service base URL
 
 	// ── Database ──────────────────────────────────────────────────────────────
 	DatabaseURL string // full PostgreSQL DSN: postgres://user:pass@host:port/db
@@ -79,6 +80,7 @@ func Load() (*Config, error) {
 		AppEnv:             getEnv("APP_ENV", "development"),
 		Port:               getEnv("PORT", "8080"),
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"),
+		BillServiceURL:     getEnv("BILL_SERVICE_URL", "http://localhost:8081"),
 
 		// Database — required; the service is useless without it
 		DatabaseURL: mustGetEnv("DATABASE_URL"),

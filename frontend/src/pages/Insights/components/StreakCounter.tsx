@@ -1,11 +1,18 @@
 import { motion } from "framer-motion";
 import { Flame } from "lucide-react";
-import { streak } from "@/lib/firebase";
+import { useAuthStore } from "@/stores/authStore";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 export function StreakCounter() {
+  const streak = useAuthStore((s) => s.profile?.streak_count ?? 0);
+  const loading = useAuthStore((s) => s.isLoading);
+
+  if (loading) return <Skeleton className="h-56 rounded-3xl" />;
+
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
       className="relative overflow-hidden rounded-3xl border border-border bg-card p-6"
     >
       <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-amber/10 blur-3xl" />
@@ -14,16 +21,17 @@ export function StreakCounter() {
           <Flame size={14} className="text-amber" /> Smart streak
         </div>
         <div className="mt-3 flex items-end gap-3">
-          <span className="font-mono text-6xl">{streak.current}</span>
-          <span className="mb-2 text-sm text-muted-foreground">days</span>
+          <span className="font-mono text-6xl">{streak}</span>
+          <span className="mb-2 text-sm text-muted-foreground">weeks</span>
         </div>
-        <div className="mt-3 text-xs text-muted-foreground">Personal best: <span className="font-mono text-foreground">{streak.best} days</span></div>
         <div className="mt-5 flex gap-1">
           {Array.from({ length: 14 }).map((_, i) => (
             <motion.div
               key={i}
-              initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ delay: i * 0.04 }}
-              className={`h-8 flex-1 rounded ${i < streak.current ? "bg-amber" : "bg-card-elevated"}`}
+              initial={{ scaleY: 0 }}
+              animate={{ scaleY: 1 }}
+              transition={{ delay: i * 0.04 }}
+              className={`h-8 flex-1 rounded ${i < Math.min(streak, 14) ? "bg-amber" : "bg-card-elevated"}`}
             />
           ))}
         </div>
@@ -31,5 +39,3 @@ export function StreakCounter() {
     </motion.div>
   );
 }
-export default StreakCounter;
-

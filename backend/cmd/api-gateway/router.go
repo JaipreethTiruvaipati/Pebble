@@ -79,7 +79,7 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, 
 			// Transactions
 			r.Route("/transactions", func(r chi.Router) {
 				r.Post("/", handleCreateTransaction(dbPool))
-				r.Post("/bill", handleUploadBill(dbPool))
+				r.Post("/bill", handleUploadBill(cfg, dbPool))
 				r.Get("/{id}", handleGetTransaction(dbPool))
 				r.Get("/", handleListTransactions(dbPool))
 				r.Post("/{id}/confirm", handleConfirmTransaction(dbPool))
@@ -161,111 +161,6 @@ func handleCreateTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
 			"transaction_id": id,
 			"status":         "pending",
 		})
-	}
-}
-
-// handleUploadBill serves POST /api/v1/transactions/bill. Intended to proxy multipart
-// receipt uploads to bill-service (port 8081), which stores the image in S3 and publishes
-// bills.uploaded on RabbitMQ for scoring-service.
-func handleUploadBill(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Acts as a proxy to the bill-service, or simply puts the job on the queue
-		httputil.RespondJSON(w, http.StatusAccepted, map[string]string{"message": "bill uploaded and queued for processing"})
-	}
-}
-
-// handleGetTransaction serves GET /api/v1/transactions/{id} and returns transaction status.
-func handleGetTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
-		httputil.RespondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "scored"})
-	}
-}
-
-// handleListTransactions serves GET /api/v1/transactions and lists the caller's transactions.
-func handleListTransactions(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
-	}
-}
-
-// handleConfirmTransaction serves POST /api/v1/transactions/{id}/confirm. User consent to
-// penalties triggers penalty-service via downstream events (wallet.penalty_queued after scoring).
-func handleConfirmTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
-		httputil.RespondJSON(w, http.StatusOK, map[string]interface{}{
-			"transaction_id": id,
-			"penalties_created": 2,
-			"total_penalty_queued": 145.50,
-			"status": "confirmed",
-		})
-	}
-}
-
-// handleOverrideScore serves PUT /api/v1/line-items/{id}/score for manual impulse-score overrides.
-func handleOverrideScore(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
-		httputil.RespondJSON(w, http.StatusOK, map[string]interface{}{
-			"line_item_id": id,
-			"message": "score successfully overridden",
-			"user_overridden": true,
-		})
-	}
-}
-
-// ── Penalty Handlers (Stubs) ────────────────────────────────────────────────
-
-// handleListPenalties serves GET /api/v1/penalties for pending and confirmed penalty rows.
-func handleListPenalties(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
-	}
-}
-
-// handleContestPenalty serves POST /api/v1/penalties/{id}/contest to dispute a queued penalty.
-func handleContestPenalty(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
-		httputil.RespondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "contested"})
-	}
-}
-
-// handleConfirmPenaltyEarly serves POST /api/v1/penalties/{id}/confirm for early consent
-// before the penalty-service consent timer expires, moving funds toward the investment pool.
-func handleConfirmPenaltyEarly(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		id := chi.URLParam(r, "id")
-		httputil.RespondJSON(w, http.StatusOK, map[string]string{"id": id, "status": "confirmed"})
-	}
-}
-
-// ── Wallet Handlers (Stubs) ─────────────────────────────────────────────────
-
-// handleGetWalletBalance serves GET /api/v1/wallet/balance (available, pending penalties, invested).
-func handleGetWalletBalance(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.RespondJSON(w, http.StatusOK, map[string]float64{
-			"balance":        1500.50,
-			"pending_total":  145.50,
-			"invested_total": 5000.00,
-		})
-	}
-}
-
-// handleWalletTopup serves POST /api/v1/wallet/topup after Razorpay payment confirmation.
-func handleWalletTopup(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Expects Razorpay payment token in body
-		httputil.RespondJSON(w, http.StatusOK, map[string]string{"message": "topup successful"})
-	}
-}
-
-// handleGetWalletLedger serves GET /api/v1/wallet/ledger for wallet movement history.
-func handleGetWalletLedger(dbPool *pgxpool.Pool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
 	}
 }
 
