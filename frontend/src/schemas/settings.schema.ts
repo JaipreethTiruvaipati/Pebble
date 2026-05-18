@@ -1,1 +1,2 @@
-// TODO: implement settings.schema.ts
+// TODO: define schema
+

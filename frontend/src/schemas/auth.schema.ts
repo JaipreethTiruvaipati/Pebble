@@ -1,1 +1,2 @@
-// TODO: implement auth.schema.ts
+// TODO: define schema
+

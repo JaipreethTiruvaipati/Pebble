@@ -1,1 +1,2 @@
-// TODO: implement useSettings.ts
+// TODO: integrate with backend
+

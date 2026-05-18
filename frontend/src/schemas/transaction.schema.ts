@@ -1,1 +1,2 @@
-// TODO: implement transaction.schema.ts
+// TODO: define schema
+

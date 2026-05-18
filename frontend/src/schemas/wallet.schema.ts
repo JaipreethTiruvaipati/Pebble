@@ -1,1 +1,2 @@
-// TODO: implement wallet.schema.ts
+// TODO: define schema
+

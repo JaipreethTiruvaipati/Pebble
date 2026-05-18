@@ -1,1 +1,2 @@
-// TODO: implement ui.types.ts
+// TODO: define UI types
+

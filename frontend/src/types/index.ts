@@ -1,1 +1,2 @@
-// TODO: implement index.ts
+// TODO: define types
+

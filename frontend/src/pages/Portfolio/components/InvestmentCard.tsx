@@ -1,1 +1,0 @@
-// TODO: implement InvestmentCard.tsx

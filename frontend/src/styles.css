@@ -1,0 +1,112 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@import url("https://fonts.googleapis.com/css2?family=Syne:wght@500;600;700;800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+@theme inline {
+  --font-display: "Syne", system-ui, sans-serif;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-card-elevated: var(--card-elevated);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-coral: var(--coral);
+  --color-teal: var(--teal);
+  --color-amber: var(--amber);
+  --color-success: var(--teal);
+  --color-warning: var(--amber);
+  --color-destructive: var(--coral);
+  --color-destructive-foreground: var(--primary-foreground);
+  --color-accent: var(--card-elevated);
+  --color-accent-foreground: var(--foreground);
+  --color-secondary: var(--card-elevated);
+  --color-secondary-foreground: var(--foreground);
+  --color-popover: var(--card-elevated);
+  --color-popover-foreground: var(--foreground);
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+}
+
+:root {
+  --background: #0c0e1a;
+  --foreground: #f0f2ff;
+  --muted: #1c1f35;
+  --muted-foreground: #8b8fa8;
+  --card: #141624;
+  --card-elevated: #1c1f35;
+  --border: #232745;
+  --input: #1c1f35;
+  --ring: #e94560;
+  --primary: #e94560;
+  --primary-foreground: #f0f2ff;
+  --coral: #e94560;
+  --teal: #00d4aa;
+  --amber: #f5a623;
+  --radius: 1rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html, body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, h5 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  .font-mono, code, kbd {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer utilities {
+  .text-coral { color: var(--coral); }
+  .text-teal { color: var(--teal); }
+  .text-amber { color: var(--amber); }
+  .bg-coral { background-color: var(--coral); }
+  .bg-teal { background-color: var(--teal); }
+  .bg-amber { background-color: var(--amber); }
+
+  .mesh-gradient {
+    background:
+      radial-gradient(at 18% 22%, rgba(233, 69, 96, 0.45) 0px, transparent 50%),
+      radial-gradient(at 82% 12%, rgba(0, 212, 170, 0.18) 0px, transparent 50%),
+      radial-gradient(at 70% 82%, rgba(63, 81, 181, 0.35) 0px, transparent 50%),
+      radial-gradient(at 22% 88%, rgba(245, 166, 35, 0.18) 0px, transparent 50%),
+      linear-gradient(180deg, #0c0e1a 0%, #141624 100%);
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, #1c1f35 0%, #232745 50%, #1c1f35 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #232745; border-radius: 3px; }
+}
