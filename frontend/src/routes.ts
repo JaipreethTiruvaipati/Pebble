@@ -1,5 +1,6 @@
 export const ROUTES = {
   landing: "/",
+  login: "/login",
   signup: "/signup",
   onboardingRisk: "/onboarding/risk",
   onboardingWallet: "/onboarding/wallet",
