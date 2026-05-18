@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Pebble API
   description: API definitions for the Pebble project, shared between Go backend and React frontend.
-  version: 0.2.0
+  version: 0.4.0
 servers:
   - url: http://localhost:8080/api/v1
     description: Local Dev Server
@@ -140,6 +140,77 @@ paths:
       responses:
         '200':
           description: Ledger entries
+
+  /users/me:
+    get:
+      summary: Current user profile with streak and penalty settings
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /insights/weekly:
+    get:
+      summary: Weekly spending digest with top categories and trends
+      tags: [Insights]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Weekly digest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyDigest'
+
+  /insights/benchmark:
+    get:
+      summary: Anonymised cohort impulse benchmark
+      tags: [Insights]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Cohort comparison
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkResult'
+
+  /referrals/me:
+    get:
+      summary: Referral code and redemption stats
+      tags: [Referrals]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Referral programme status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralStats'
+
+  /referrals/redeem:
+    post:
+      summary: Redeem a referral code (once per user)
+      tags: [Referrals]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Code redeemed
 
   /portfolio:
     get:
@@ -318,4 +389,91 @@ components:
           items:
             $ref: '#/components/schemas/Investment'
         total:
+          type: integer
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        phone:
+          type: string
+        risk_profile:
+          type: string
+        penalty_rate:
+          type: number
+        effective_penalty_rate:
+          type: number
+        penalty_threshold:
+          type: integer
+        invest_threshold:
+          type: number
+        consent_hours:
+          type: integer
+        streak_count:
+          type: integer
+        streak_last_updated:
+          type: string
+          format: date-time
+          nullable: true
+        streak_discount_pct:
+          type: number
+
+    WeeklyDigest:
+      type: object
+      properties:
+        week_start:
+          type: string
+          format: date-time
+        week_end:
+          type: string
+          format: date-time
+        total_spend:
+          type: number
+        impulse_pct:
+          type: number
+        avg_impulse_score:
+          type: number
+        top_categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategorySpend'
+        trend_vs_last_week_pct:
+          type: number
+
+    CategorySpend:
+      type: object
+      properties:
+        category:
+          type: string
+        amount:
+          type: number
+        pct:
+          type: number
+
+    ReferralStats:
+      type: object
+      properties:
+        code:
+          type: string
+        redemption_count:
+          type: integer
+        discount_pct:
+          type: number
+
+    BenchmarkResult:
+      type: object
+      properties:
+        user_impulse_pct:
+          type: number
+        cohort_impulse_pct:
+          type: number
+        saved_vs_cohort_pct:
+          type: number
+        cohort_label:
+          type: string
+        sample_size:
           type: integer

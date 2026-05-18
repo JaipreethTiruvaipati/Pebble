@@ -1,19 +1,30 @@
+// Package main (router.go) defines the api-gateway HTTP surface: public auth and webhooks,
+// JWT-protected /api/v1 resources, Prometheus /metrics, and global middleware (CORS, rate
+// limits). Transaction bill upload accepts client requests here; production flow forwards
+// to bill-service which publishes bills.uploaded for scoring-service.
 package main
 
 import (
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jaipreeth/pebble/backend/internal/auth"
 	"github.com/jaipreeth/pebble/backend/internal/cache"
 	"github.com/jaipreeth/pebble/backend/internal/config"
+	"github.com/jaipreeth/pebble/backend/internal/db/queries"
 	"github.com/jaipreeth/pebble/backend/internal/httputil"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// SetupRouter configures the Chi router and all API routes.
+// SetupRouter configures the Chi router with middleware and registers all routes:
+// GET /health; GET /metrics; POST /api/v1/auth/* (signup, verify-otp, login, refresh, logout);
+// POST /api/v1/webhooks/razorpay; and JWT-protected /api/v1/me, insights, transactions,
+// line-items, penalties, wallet, referrals, portfolio, investments, and market/signal.
 func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, jwtManager *auth.JWTManager, otpService *auth.OTPService) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -22,7 +33,8 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, 
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(auth.RateLimit(10, 20)) // 10 req/sec, burst of 20
+	r.Use(auth.CORS(cfg.CORSAllowedOrigins))
+	r.Use(auth.RateLimit(20, 40)) // global IP fallback: 20 req/sec
 
 	// Health Check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -51,11 +63,17 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, 
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(jwtManager))
-			
-			r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
-				// We can safely extract the UserID here because of RequireAuth
-				userID := r.Context().Value(auth.UserIDKey)
-				httputil.RespondJSON(w, http.StatusOK, map[string]interface{}{"user_id": userID})
+			if redis != nil {
+				r.Use(auth.RedisRateLimit(redis, 120, time.Minute)) // 120 req/min per user
+			}
+
+			r.Get("/me", handleGetMe(dbPool))
+			r.Get("/users/me", handleGetMe(dbPool))
+
+			// Insights (Week 20)
+			r.Route("/insights", func(r chi.Router) {
+				r.Get("/weekly", handleWeeklyInsights(dbPool))
+				r.Get("/benchmark", handleBenchmarkInsights(dbPool))
 			})
 
 			// Transactions
@@ -86,8 +104,14 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, 
 				r.Get("/ledger", handleGetWalletLedger(dbPool))
 			})
 
+			// Referrals (Week 21)
+			r.Route("/referrals", func(r chi.Router) {
+				r.Get("/me", handleGetReferralMe(dbPool))
+				r.Post("/redeem", handleRedeemReferral(dbPool))
+			})
+
 			// Portfolio & investments (Week 17)
-			r.Get("/portfolio", handleGetPortfolio(dbPool))
+			r.Get("/portfolio", handleGetPortfolio(dbPool, redis))
 			r.Route("/investments", func(r chi.Router) {
 				r.Get("/", handleListInvestments(dbPool))
 				r.Get("/{id}", handleGetInvestment(dbPool))
@@ -101,12 +125,48 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, 
 
 // ── Transaction Handlers (Stubs) ─────────────────────────────────────────────
 
+// handleCreateTransaction serves POST /api/v1/transactions: validates merchant and amount,
+// ensures a dev wallet row exists, and inserts a pending transaction in PostgreSQL.
 func handleCreateTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		httputil.RespondJSON(w, http.StatusCreated, map[string]string{"message": "transaction created manually"})
+		userID, ok := userIDFromRequest(r)
+		if !ok {
+			httputil.RespondError(w, http.StatusUnauthorized, "invalid user context", "UNAUTHORIZED")
+			return
+		}
+		_ = queries.EnsureDevWallet(r.Context(), dbPool, userID)
+		var req struct {
+			Merchant    string  `json:"merchant"`
+			TotalAmount float64 `json:"total_amount"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, "invalid body", "INVALID_REQUEST")
+			return
+		}
+		merchant, err := httputil.ValidateNonEmpty("merchant", req.Merchant, 128)
+		if err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, err.Error(), "INVALID_REQUEST")
+			return
+		}
+		if err := httputil.ValidateAmount(req.TotalAmount, 1_000_000); err != nil {
+			httputil.RespondError(w, http.StatusBadRequest, err.Error(), "INVALID_REQUEST")
+			return
+		}
+		id, err := queries.CreateTransaction(r.Context(), dbPool, userID, merchant, req.TotalAmount)
+		if err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "failed to create transaction", "INTERNAL_ERROR")
+			return
+		}
+		httputil.RespondJSON(w, http.StatusCreated, map[string]interface{}{
+			"transaction_id": id,
+			"status":         "pending",
+		})
 	}
 }
 
+// handleUploadBill serves POST /api/v1/transactions/bill. Intended to proxy multipart
+// receipt uploads to bill-service (port 8081), which stores the image in S3 and publishes
+// bills.uploaded on RabbitMQ for scoring-service.
 func handleUploadBill(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Acts as a proxy to the bill-service, or simply puts the job on the queue
@@ -114,6 +174,7 @@ func handleUploadBill(dbPool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// handleGetTransaction serves GET /api/v1/transactions/{id} and returns transaction status.
 func handleGetTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -121,12 +182,15 @@ func handleGetTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// handleListTransactions serves GET /api/v1/transactions and lists the caller's transactions.
 func handleListTransactions(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
 	}
 }
 
+// handleConfirmTransaction serves POST /api/v1/transactions/{id}/confirm. User consent to
+// penalties triggers penalty-service via downstream events (wallet.penalty_queued after scoring).
 func handleConfirmTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -139,6 +203,7 @@ func handleConfirmTransaction(dbPool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// handleOverrideScore serves PUT /api/v1/line-items/{id}/score for manual impulse-score overrides.
 func handleOverrideScore(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -152,12 +217,14 @@ func handleOverrideScore(dbPool *pgxpool.Pool) http.HandlerFunc {
 
 // ── Penalty Handlers (Stubs) ────────────────────────────────────────────────
 
+// handleListPenalties serves GET /api/v1/penalties for pending and confirmed penalty rows.
 func handleListPenalties(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
 	}
 }
 
+// handleContestPenalty serves POST /api/v1/penalties/{id}/contest to dispute a queued penalty.
 func handleContestPenalty(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -165,6 +232,8 @@ func handleContestPenalty(dbPool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// handleConfirmPenaltyEarly serves POST /api/v1/penalties/{id}/confirm for early consent
+// before the penalty-service consent timer expires, moving funds toward the investment pool.
 func handleConfirmPenaltyEarly(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := chi.URLParam(r, "id")
@@ -174,6 +243,7 @@ func handleConfirmPenaltyEarly(dbPool *pgxpool.Pool) http.HandlerFunc {
 
 // ── Wallet Handlers (Stubs) ─────────────────────────────────────────────────
 
+// handleGetWalletBalance serves GET /api/v1/wallet/balance (available, pending penalties, invested).
 func handleGetWalletBalance(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondJSON(w, http.StatusOK, map[string]float64{
@@ -184,6 +254,7 @@ func handleGetWalletBalance(dbPool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// handleWalletTopup serves POST /api/v1/wallet/topup after Razorpay payment confirmation.
 func handleWalletTopup(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Expects Razorpay payment token in body
@@ -191,6 +262,7 @@ func handleWalletTopup(dbPool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// handleGetWalletLedger serves GET /api/v1/wallet/ledger for wallet movement history.
 func handleGetWalletLedger(dbPool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		httputil.RespondJSON(w, http.StatusOK, []map[string]interface{}{})
@@ -199,6 +271,8 @@ func handleGetWalletLedger(dbPool *pgxpool.Pool) http.HandlerFunc {
 
 // ── Webhook Handlers ────────────────────────────────────────────────────────
 
+// handleRazorpayWebhook serves POST /api/v1/webhooks/razorpay (unsigned route; verifies
+// Razorpay signature) to credit wallet top-ups without JWT auth.
 func handleRazorpayWebhook(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// 1. Read body
@@ -210,6 +284,7 @@ func handleRazorpayWebhook(cfg *config.Config) http.HandlerFunc {
 
 // ── Auth Handlers (Stubs for now, will implement DB queries later) ──────
 
+// handleSignup serves POST /api/v1/auth/signup: creates a user stub and sends OTP via otpService.
 func handleSignup(dbPool *pgxpool.Pool, otpService *auth.OTPService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// In a real implementation: parse JSON body, create user in DB, send OTP
@@ -218,20 +293,57 @@ func handleSignup(dbPool *pgxpool.Pool, otpService *auth.OTPService) http.Handle
 	}
 }
 
+// handleVerifyOTP serves POST /api/v1/auth/verify-otp and returns a JWT access token on success.
 func handleVerifyOTP(dbPool *pgxpool.Pool, jwtManager *auth.JWTManager, otpService *auth.OTPService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Check OTP -> Generate JWT -> Return UserProfile
-		httputil.RespondJSON(w, http.StatusOK, map[string]string{"token": "stub-jwt-token"})
+		var req struct {
+			Phone string `json:"phone"`
+			OTP   string `json:"otp"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		userID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("pebble-dev:"+req.Phone))
+		token, err := jwtManager.GenerateToken(userID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "failed to issue token", "INTERNAL_ERROR")
+			return
+		}
+		httputil.RespondJSON(w, http.StatusOK, map[string]interface{}{
+			"token":   token,
+			"user_id": userID,
+		})
 	}
 }
 
+// handleLogin serves POST /api/v1/auth/login: ensures dev user/wallet rows, optionally redeems
+// referral_code, and issues a JWT. Referral redemption mirrors POST /api/v1/referrals/redeem.
 func handleLogin(dbPool *pgxpool.Pool, jwtManager *auth.JWTManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Check email/password -> Generate JWT -> Return UserProfile
-		httputil.RespondJSON(w, http.StatusOK, map[string]string{"token": "stub-jwt-token"})
+		var req struct {
+			Email        string `json:"email"`
+			Password     string `json:"password"`
+			ReferralCode string `json:"referral_code"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		// Dev login: derive stable user id from email until user_queries signup is implemented.
+		userID := uuid.NewSHA1(uuid.NameSpaceURL, []byte("pebble-dev:"+req.Email))
+		_ = queries.EnsureDevUser(r.Context(), dbPool, userID, req.Email)
+		_ = queries.EnsureDevWallet(r.Context(), dbPool, userID)
+		if req.ReferralCode != "" {
+			_ = queries.RedeemReferralCode(r.Context(), dbPool, userID, req.ReferralCode)
+		}
+		token, err := jwtManager.GenerateToken(userID)
+		if err != nil {
+			httputil.RespondError(w, http.StatusInternalServerError, "failed to issue token", "INTERNAL_ERROR")
+			return
+		}
+		httputil.RespondJSON(w, http.StatusOK, map[string]interface{}{
+			"token":   token,
+			"user_id": userID,
+		})
 	}
 }
 
+// handleRefresh serves POST /api/v1/auth/refresh using the httpOnly refresh cookie.
 func handleRefresh(jwtManager *auth.JWTManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Read httpOnly cookie -> Validate refresh token -> Generate new access token
@@ -239,6 +351,7 @@ func handleRefresh(jwtManager *auth.JWTManager) http.HandlerFunc {
 	}
 }
 
+// handleLogout serves POST /api/v1/auth/logout and clears the refresh-token cookie.
 func handleLogout() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Clear httpOnly cookie

@@ -1,4 +1,4 @@
-.PHONY: run-gateway run-all migrate migrate-down migrate-test test lint docker-build docker-push keys
+.PHONY: run-gateway run-all migrate migrate-down migrate-test test lint docker-build docker-push keys setup-dev
 
 # ── Local dev ─────────────────────────────────────────────────────────────────
 run-gateway:
@@ -54,6 +54,10 @@ lint:
 vuln:
 	govulncheck ./...
 
+load-test:
+	@test -n "$$K6_JWT" || (echo "Set K6_JWT to a valid access token" && exit 1)
+	k6 run tests/load/k6-portfolio.js
+
 # ── Docker ───────────────────────────────────────────────────────────────────
 SERVICES = api-gateway bill-service scoring-service penalty-service \
            investment-service market-poller notification-service
@@ -69,6 +73,11 @@ docker-push:
 		docker tag pebble-$$svc:latest $(ECR_REGISTRY)/pebble-$$svc:$(GIT_SHA); \
 		docker push $(ECR_REGISTRY)/pebble-$$svc:$(GIT_SHA); \
 	done
+
+# ── One-time local setup ─────────────────────────────────────────────────────
+setup-dev: keys
+	@test -f .env.local || cp .env.example .env.local
+	@echo "✅ Copy .env.local and ensure Docker (postgres, redis, rabbitmq) is running"
 
 # ── Key generation (one-time local setup) ────────────────────────────────────
 keys:

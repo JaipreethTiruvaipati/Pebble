@@ -1,3 +1,4 @@
+// Package models defines domain structs that map to Pebble PostgreSQL tables and API JSON bodies.
 package models
 
 import (
@@ -6,7 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// WalletTransaction records all money movements in the user's wallet.
+// WalletTransaction records a single ledger entry for wallet balance changes.
+// Maps to wallet_transactions; references penalties or investments via ReferenceID.
 type WalletTransaction struct {
 	ID           uuid.UUID  `json:"id"`
 	UserID       uuid.UUID  `json:"user_id"`

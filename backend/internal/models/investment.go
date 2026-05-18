@@ -1,3 +1,5 @@
+// Package models defines domain structs that map to Pebble PostgreSQL tables and API JSON bodies.
+// Investment types represent pooled penalty cash deployed into market assets.
 package models
 
 import (
@@ -6,7 +8,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// Investment represents an asset purchased by Pebble on behalf of the user pool.
+// Investment is a broker purchase on behalf of a user after pool batch execution.
+// Maps to investments; created by queries.MarkPoolInvested from pooled contributions.
 type Investment struct {
 	ID            uuid.UUID `json:"id"`
 	UserID        uuid.UUID `json:"user_id"`
@@ -20,7 +23,8 @@ type Investment struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-// PoolContribution represents a confirmed penalty that has been added to the investment pool.
+// PoolContribution links confirmed penalty cash to the shared investment pool.
+// Maps to pool_contributions; status moves pooled → invested after MarkPoolInvested.
 type PoolContribution struct {
 	ID         uuid.UUID  `json:"id"`
 	UserID     uuid.UUID  `json:"user_id"`
@@ -31,7 +35,8 @@ type PoolContribution struct {
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
-// MarketSignal represents an AI-generated decision based on live market data.
+// MarketSignal is an AI/market-poller decision that can trigger discretionary pool invests.
+// Used by market-poller and investment-service allocation logic.
 type MarketSignal struct {
 	AssetClass string    `json:"asset_class"`
 	Indicator  string    `json:"indicator"` // e.g., "RSI", "YieldCurve"

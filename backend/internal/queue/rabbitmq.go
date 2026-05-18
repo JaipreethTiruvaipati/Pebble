@@ -1,3 +1,5 @@
+// Package queue defines RabbitMQ connectivity, event payloads, and publish/consume helpers
+// used to decouple Pebble microservices (bill scoring → penalties → pool investment).
 package queue
 
 import (
@@ -9,12 +11,25 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// RabbitMQ wraps a persistent AMQP connection and channel for the Pebble event bus.
+// Declares pebble.events (topic) and pebble.dlx (direct) exchanges on Connect.
 type RabbitMQ struct {
 	conn *amqp.Connection
 	ch   *amqp.Channel
 }
 
-// Connect initializes the RabbitMQ connection and sets up DLQs.
+// Connect dials RabbitMQ and declares the Pebble exchanges and dead-letter topology.
+//
+// Parameters:
+//   - url: AMQP URL (e.g. amqp://guest:guest@localhost:5672/)
+//
+// Returns:
+//   - *RabbitMQ: ready client with an open channel
+//   - error: dial, channel, or exchange declare failure
+//
+// How it works: opens connection + channel, declares pebble.dlx (direct) for failed messages
+// and pebble.events (topic) for routing keys like bills.scored and investments.executed.
+// Each microservice calls Connect once at startup.
 func Connect(url string) (*RabbitMQ, error) {
 	conn, err := amqp.Dial(url)
 	if err != nil {
@@ -41,13 +56,30 @@ func Connect(url string) (*RabbitMQ, error) {
 	return &RabbitMQ{conn: conn, ch: ch}, nil
 }
 
-// Close cleanly shuts down the channel and connection.
+// Close shuts down the AMQP channel and underlying connection.
+//
+// Parameters: none (receiver is *RabbitMQ)
+//
+// Returns: nothing; errors from Close are ignored.
+//
+// Pebble flow: deferred from service main() on graceful shutdown.
 func (r *RabbitMQ) Close() {
 	r.ch.Close()
 	r.conn.Close()
 }
 
-// Publish sends a JSON message to a routing key.
+// Publish JSON-marshals body and sends a persistent message to pebble.events.
+//
+// Parameters:
+//   - ctx: passed to PublishWithContext for cancellation
+//   - routingKey: topic routing key (use Topic* constants from events.go)
+//   - body: event struct (PenaltyQueuedEvent, BillsScoredEvent, etc.)
+//
+// Returns:
+//   - error: marshal or publish failure
+//
+// Pebble flow: producers (bill-service, penalty-service, investment-service, scoring-service)
+// emit domain events consumed by peer services bound to matching queue names.
 func (r *RabbitMQ) Publish(ctx context.Context, routingKey string, body interface{}) error {
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -67,7 +99,19 @@ func (r *RabbitMQ) Publish(ctx context.Context, routingKey string, body interfac
 	return nil
 }
 
-// Consume starts a consumer on a specific queue with a routing key, handling DLQ routing.
+// Consume declares a main queue with DLQ binding and processes deliveries in a goroutine.
+//
+// Parameters:
+//   - queueName: durable queue name (e.g. "penalty-service.bills")
+//   - routingKey: binding key on pebble.events (e.g. TopicBillsScored)
+//   - handler: callback receiving raw JSON body; return error to Nack → DLQ
+//
+// Returns:
+//   - error: queue declare, bind, or Consume setup failure
+//
+// How it works: creates {queueName}.dlq bound to pebble.dlx, declares main queue with
+// x-dead-letter-exchange, binds to routingKey, then Ack's on success or Nack's to DLQ
+// on handler error. Handler runs concurrently in a background goroutine.
 func (r *RabbitMQ) Consume(queueName, routingKey string, handler func(body []byte) error) error {
 	// 1. Declare DLQ
 	dlqName := queueName + ".dlq"

@@ -1,3 +1,5 @@
+// Package main (trigger_opportunity.go) runs the market-opportunity trigger: when Redis
+// signals from market-poller include a strong BUY (value ≥ 70), ExecutePool("opportunity") runs.
 package main
 
 import (
@@ -9,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// HasStrongBuySignal returns true when any cached signal is a high-confidence BUY.
+// HasStrongBuySignal returns true when any signal has Action "BUY" and Value ≥ 70.
 func HasStrongBuySignal(signals []models.MarketSignal) bool {
 	for _, s := range signals {
 		if s.Action == "BUY" && s.Value >= 70 {
@@ -19,7 +21,7 @@ func HasStrongBuySignal(signals []models.MarketSignal) bool {
 	return false
 }
 
-// StartOpportunityTrigger deploys the pool when Redis market signals indicate a strong opportunity.
+// StartOpportunityTrigger reads cache.KeyMarketSignals hourly and calls ExecutePool("opportunity") on strong BUY.
 func StartOpportunityTrigger(redis *cache.Client) {
 	log.Info().Msg("started opportunity trigger goroutine (hourly signal check)")
 	ticker := time.NewTicker(1 * time.Hour)

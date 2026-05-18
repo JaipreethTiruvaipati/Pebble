@@ -1,3 +1,7 @@
+// Package main runs the investment-service microservice: pools confirmed penalty cash,
+// executes micro-batch trades via Smallcase when threshold/time/opportunity triggers fire,
+// and publishes investments.executed. Consumes wallet.penalties_confirmed to log pool
+// inflows; reads Redis market signals written by market-poller.
 package main
 
 import (
@@ -19,6 +23,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// main wires PostgreSQL, Redis, RabbitMQ, and Smallcase; starts three trigger goroutines;
+// consumes wallet.penalties_confirmed on investment.penalties.confirmed; metrics on :9095.
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Str("service", "investment-service").Logger()
@@ -65,6 +71,7 @@ func main() {
 	go StartTimeTrigger()
 	go StartOpportunityTrigger(redisClient)
 
+	// consumePenaltiesConfirmed logs wallet.penalties_confirmed events; pool execution is trigger-driven.
 	_ = rmq.Consume("investment.penalties.confirmed", queue.TopicWalletPenaltyConfirmed, func(body []byte) error {
 		var event queue.PenaltiesConfirmedEvent
 		if err := json.Unmarshal(body, &event); err != nil {

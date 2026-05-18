@@ -1,8 +1,13 @@
+// Package main (handlers_investment.go) exposes portfolio and investment HTTP handlers.
+// Portfolio summaries are cached in Redis (written by market-poller signals and invalidated
+// on investment execution). GET /market/signal reads the same Redis key used by
+// investment-service opportunity triggers.
 package main
 
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -12,30 +17,58 @@ import (
 	"github.com/jaipreeth/pebble/backend/internal/db/queries"
 	"github.com/jaipreeth/pebble/backend/internal/httputil"
 	"github.com/jaipreeth/pebble/backend/internal/models"
+	"github.com/rs/zerolog/log"
 )
 
+// userIDFromRequest extracts the authenticated user UUID set by auth.RequireAuth middleware.
 func userIDFromRequest(r *http.Request) (uuid.UUID, bool) {
 	v := r.Context().Value(auth.UserIDKey)
 	id, ok := v.(uuid.UUID)
 	return id, ok
 }
 
-func handleGetPortfolio(db *pgxpool.Pool) http.HandlerFunc {
+// handleGetPortfolio serves GET /api/v1/portfolio with Redis cache-aside (KeyPortfolioSummary).
+func handleGetPortfolio(db *pgxpool.Pool, redis *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := userIDFromRequest(r)
 		if !ok {
 			httputil.RespondError(w, http.StatusUnauthorized, "invalid user context", "UNAUTHORIZED")
 			return
 		}
+
+		cacheKey := cache.KeyPortfolioSummary(userID)
+		if redis != nil {
+			var cached queries.PortfolioSummary
+			if hit, err := redis.GetJSON(r.Context(), cacheKey, &cached); err == nil && hit {
+				w.Header().Set("X-Cache", "HIT")
+				httputil.RespondJSON(w, http.StatusOK, cached)
+				return
+			}
+		}
+
+		start := time.Now()
 		summary, err := queries.GetPortfolioSummary(r.Context(), db, userID)
 		if err != nil {
 			httputil.RespondError(w, http.StatusInternalServerError, "failed to load portfolio", "INTERNAL_ERROR")
 			return
 		}
+		elapsed := time.Since(start)
+		if elapsed > 200*time.Millisecond {
+			log.Warn().
+				Str("user_id", userID.String()).
+				Dur("latency", elapsed).
+				Msg("portfolio summary exceeded 200ms (cache miss)")
+		}
+
+		if redis != nil {
+			_ = redis.SetJSON(r.Context(), cacheKey, summary, cache.PortfolioSummaryTTL)
+		}
+		w.Header().Set("X-Cache", "MISS")
 		httputil.RespondJSON(w, http.StatusOK, summary)
 	}
 }
 
+// handleListInvestments serves GET /api/v1/investments with optional trigger_type and limit query params.
 func handleListInvestments(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := userIDFromRequest(r)
@@ -60,6 +93,7 @@ func handleListInvestments(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// handleGetInvestment serves GET /api/v1/investments/{id} for a single investment batch row.
 func handleGetInvestment(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := userIDFromRequest(r)
@@ -85,6 +119,8 @@ func handleGetInvestment(db *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// handleGetMarketSignal serves GET /api/v1/market/signal: reads market-poller cached signals
+// from Redis (cache.KeyMarketSignals) and returns a composite BUY score for the client UI.
 func handleGetMarketSignal(redis *cache.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var signals []models.MarketSignal

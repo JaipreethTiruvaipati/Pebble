@@ -1,3 +1,5 @@
+// Package main (trigger_threshold.go) runs the pooled-balance threshold trigger: when total
+// confirmed penalties in the pool reach DefaultPoolThresholdINR, ExecutePool("threshold") runs.
 package main
 
 import (
@@ -12,7 +14,7 @@ import (
 // DefaultPoolThresholdINR is the minimum pooled balance before the threshold trigger fires.
 const DefaultPoolThresholdINR = 500.0
 
-// StartThresholdTrigger monitors pooled penalty cash and executes when the sum crosses the threshold.
+// StartThresholdTrigger polls SumPooledAmount every 5 minutes and calls ExecutePool("threshold") when sum ≥ DefaultPoolThresholdINR.
 func StartThresholdTrigger(db *pgxpool.Pool) {
 	log.Info().Float64("threshold_inr", DefaultPoolThresholdINR).Msg("started threshold trigger goroutine")
 	ticker := time.NewTicker(5 * time.Minute)
