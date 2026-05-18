@@ -1,1 +1,0 @@
--- TODO: implement 004_investments_pool.down.sql

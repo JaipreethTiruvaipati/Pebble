@@ -9,6 +9,13 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
 // @cloudflare/vite-plugin builds from this — wrangler.jsonc main alone is insufficient.
 export default defineConfig({
+  // API gateway uses :8080; keep UI on Vite's default port to avoid bind conflicts.
+  vite: {
+    server: {
+      port: 5173,
+      strictPort: false,
+    },
+  },
   tanstackStart: {
     server: { entry: "server" },
     router: {

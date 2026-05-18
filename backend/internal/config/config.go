@@ -71,9 +71,9 @@ type Config struct {
 // Every service main calls Load first, then passes cfg to auth, cache, db, and queue setup.
 // JWT paths, CORS origins, and broker keys flow into api-gateway; worker services use subsets.
 func Load() (*Config, error) {
-	// In development, load from .env.local. In production (ECS), vars come from Secrets Manager
-	// injected into the task environment — godotenv.Load will silently fail if file is missing.
-	_ = godotenv.Load(".env.local")
+	// In development, load from .env.local. Overload wins over stale shell exports (e.g. old
+	// DATABASE_URL on port 5432). In production (ECS), vars come from the task environment.
+	_ = godotenv.Overload(".env.local")
 
 	cfg := &Config{
 		// Server
