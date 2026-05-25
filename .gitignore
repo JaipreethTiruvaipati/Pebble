@@ -5,3 +5,11 @@ coverage.out
 coverage.html
 .DS_Store
 node_modules
+Tree.md
+
+# Terraform
+*.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl

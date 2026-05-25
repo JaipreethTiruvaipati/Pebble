@@ -1,9 +1,11 @@
 // Package main runs the notification-service microservice: the fan-out step for user-facing
 // alerts. It consumes wallet.penalty_queued, investments.executed, and streak.updated from
-// RabbitMQ and will dispatch FCM push and SES email (Phase 2). No HTTP API except Prometheus :9093.
+// RabbitMQ and dispatches FCM push and SES email via the Dispatcher.
+// No HTTP API except Prometheus :9093.
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -12,13 +14,15 @@ import (
 
 	"github.com/jaipreeth/pebble/backend/internal/config"
 	"github.com/jaipreeth/pebble/backend/internal/queue"
+	"github.com/jaipreeth/pebble/backend/pkg/notify"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-// main connects to RabbitMQ, registers three consumers (penalty queued, investments executed,
-// streak updated), serves /metrics on :9093, and blocks until SIGINT/SIGTERM.
+// main connects to RabbitMQ, initializes FCM and SES clients, registers three consumers
+// (penalty queued, investments executed, streak updated), serves /metrics on :9093,
+// and blocks until SIGINT/SIGTERM.
 func main() {
 	// Structured zerolog logging
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
@@ -47,21 +51,44 @@ func main() {
 	}
 	defer rmq.Close()
 
+	// Initialize FCM client (optional — skips push if credentials unavailable)
+	ctx := context.Background()
+	var fcmClient *notify.FCMClient
+	if cfg.FirebaseCredPath != "" {
+		fcmClient, err = notify.NewFCMClient(ctx, cfg.FirebaseCredPath)
+		if err != nil {
+			log.Warn().Err(err).Msg("FCM client unavailable — push notifications disabled")
+		} else {
+			log.Info().Msg("FCM client initialized")
+		}
+	}
+
+	// Initialize SES client (optional — skips email if not configured)
+	var sesClient *notify.SESClient
+	if cfg.SESFromEmail != "" {
+		sesClient, err = notify.NewSESClient(ctx, cfg.AWSRegion, cfg.SESFromEmail)
+		if err != nil {
+			log.Warn().Err(err).Msg("SES client unavailable — email notifications disabled")
+		} else {
+			log.Info().Msg("SES client initialized")
+		}
+	}
+
+	dispatcher := NewDispatcher(fcmClient, sesClient)
+
 	// consumePenaltyQueued handles wallet.penalty_queued from penalty-service (pending consent alert).
 	err = rmq.Consume("notification.penalty.queued", queue.TopicWalletPenaltyQueued, func(body []byte) error {
 		var event queue.PenaltyQueuedEvent
 		if err := json.Unmarshal(body, &event); err != nil {
 			return err
 		}
-		
+
 		log.Info().
 			Str("user_id", event.UserID.String()).
 			Float64("total_pending", event.TotalPending).
-			Msg("dispatching push notification via FCM and email via SES")
-			
-		// TODO: Phase 2 - Initialize Firebase Admin SDK and send FCM push notification
-		// TODO: Phase 2 - Initialize AWS SES client and send email
-		
+			Msg("dispatching penalty notification via FCM and SES")
+
+		dispatcher.NotifyPenaltyQueued(ctx, event.UserID, event.TotalPending)
 		return nil
 	})
 
@@ -81,8 +108,8 @@ func main() {
 			Str("broker_ref", event.BrokerRef).
 			Int("investments", len(event.InvestmentIDs)).
 			Msg("dispatching investment confirmation via FCM and SES")
-		// TODO: FCM — "Rs X invested across equity, gold, bonds"
-		// TODO: SES — investment receipt email
+
+		dispatcher.NotifyInvestmentExecuted(ctx, event.TriggerType, event.TotalAmount, event.BrokerRef)
 		return nil
 	})
 	if err != nil {
@@ -99,6 +126,8 @@ func main() {
 			Int("streak", event.StreakCount).
 			Str("user_id", event.UserID.String()).
 			Msg("streak milestone — notify user of discipline streak")
+
+		dispatcher.NotifyStreakMilestone(ctx, event.UserID, event.StreakCount)
 		return nil
 	})
 

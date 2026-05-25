@@ -34,7 +34,7 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(auth.CORS(cfg.CORSAllowedOrigins))
-	r.Use(auth.RateLimit(20, 40)) // global IP fallback: 20 req/sec
+	r.Use(auth.RateLimit(100, 200)) // global IP fallback: 100 req/sec
 
 	// Health Check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +64,7 @@ func SetupRouter(cfg *config.Config, dbPool *pgxpool.Pool, redis *cache.Client, 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(jwtManager))
 			if redis != nil {
-				r.Use(auth.RedisRateLimit(redis, 120, time.Minute)) // 120 req/min per user
+				r.Use(auth.RedisRateLimit(redis, 1000, time.Minute)) // 1000 req/min per user
 			}
 
 			r.Get("/me", handleGetMe(dbPool))

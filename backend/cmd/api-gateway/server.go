@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -16,11 +17,16 @@ type Server struct {
 }
 
 // NewServer binds the Chi router to ":port" and returns a Server ready for Start.
+// Includes production-safe timeouts to prevent slow-client attacks and resource exhaustion.
 func NewServer(port string, router *chi.Mux) *Server {
 	return &Server{
 		httpServer: &http.Server{
-			Addr:    ":" + port,
-			Handler: router,
+			Addr:              ":" + port,
+			Handler:           router,
+			ReadTimeout:       15 * time.Second,
+			WriteTimeout:      30 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			ReadHeaderTimeout: 5 * time.Second,
 		},
 	}
 }

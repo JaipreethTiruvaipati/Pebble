@@ -35,10 +35,9 @@ func Connect(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("failed to parse database URL: %w", err)
 	}
 
-	// Configure connection pool settings
-	// In production, you'd want to tune these based on your instance size
-	poolConfig.MaxConns = 25
-	poolConfig.MinConns = 5
+	// Configure connection pool settings from environment (tunable per instance size)
+	poolConfig.MaxConns = cfg.DatabaseMaxOpenConns
+	poolConfig.MinConns = cfg.DatabaseMaxIdleConns
 	poolConfig.MaxConnLifetime = 1 * time.Hour
 	poolConfig.MaxConnIdleTime = 30 * time.Minute
 

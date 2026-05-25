@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/generative-ai-go/genai"
 	"github.com/jaipreeth/pebble/backend/internal/models"
+	"github.com/jaipreeth/pebble/backend/pkg/retry"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/api/option"
 )
@@ -58,6 +59,8 @@ func (g *GeminiClient) Close() {
 // The model extracts merchant, total, and line items with category, impulse score (0–100),
 // and reasoning. Output is unmarshaled into ReceiptExtraction for persistence by scoring-service.
 // Markdown code fences around JSON are stripped before parsing.
+//
+// Retries up to 3 times with exponential backoff on transient API failures.
 func (g *GeminiClient) ExtractAndScore(ctx context.Context, rawOCRText string) (*ReceiptExtraction, error) {
 	// We use gemini-1.5-flash as it is extremely fast and great at JSON extraction
 	model := g.client.GenerativeModel("gemini-1.5-flash")
@@ -65,52 +68,51 @@ func (g *GeminiClient) ExtractAndScore(ctx context.Context, rawOCRText string) (
 	// Force the model to return valid JSON
 	model.ResponseMIMEType = "application/json"
 
-	prompt := `
-You are an expert Indian financial assistant. You will be given raw, unstructured text extracted from an Indian shopping receipt via OCR.
-Your job is to parse this text into a strict JSON format.
+	prompt := ReceiptExtractionPrompt + rawOCRText
 
-INSTRUCTIONS:
-1. Identify the "merchant" name.
-2. Identify the "total_amount" paid (numeric only).
-3. Extract all individual line items. Do not include taxes (GST), service charges, or totals as items.
-4. For each item, you must determine:
-   - "name": the product name.
-   - "amount": the cost of that specific item (numeric only).
-   - "category": assign one of [food, beverage, essential, subscription, entertainment, transport, other].
-   - "score": an Impulse Score from 0 to 100 (0 = highly essential, 100 = total impulse/luxury buy).
-   - "reasoning": a very short 1-sentence explanation of why you gave this score.
-
-RAW OCR TEXT:
-` + rawOCRText
-
-	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
-	if err != nil {
-		return nil, fmt.Errorf("gemini API call failed: %w", err)
-	}
-
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("gemini returned an empty response")
-	}
-
-	// Extract the JSON text from the response
-	var jsonStr string
-	if text, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
-		jsonStr = string(text)
-	} else {
-		return nil, fmt.Errorf("unexpected response type from gemini")
-	}
-
-	// Clean up any markdown formatting (e.g. ` + "```" + `json ... ` + "```" + `) just in case
-	jsonStr = strings.TrimPrefix(jsonStr, "```json\n")
-	jsonStr = strings.TrimSuffix(jsonStr, "\n```")
-
-	// Parse the JSON directly into our Go struct
 	var result ReceiptExtraction
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
-		log.Error().Err(err).Str("json", jsonStr).Msg("failed to parse gemini JSON")
-		return nil, fmt.Errorf("failed to unmarshal gemini response: %w", err)
+
+	err := retry.Do(ctx, retry.Default(), "gemini-extract-and-score", func() error {
+		resp, err := model.GenerateContent(ctx, genai.Text(prompt))
+		if err != nil {
+			return fmt.Errorf("gemini API call failed: %w", err)
+		}
+
+		if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+			return fmt.Errorf("gemini returned an empty response")
+		}
+
+		// Extract the JSON text from the response
+		var jsonStr string
+		if text, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
+			jsonStr = string(text)
+		} else {
+			return fmt.Errorf("unexpected response type from gemini")
+		}
+
+		// Clean up any markdown formatting (e.g. ```json ... ```) just in case
+		jsonStr = strings.TrimPrefix(jsonStr, "```json\n")
+		jsonStr = strings.TrimSuffix(jsonStr, "\n```")
+
+		// Parse the JSON directly into our Go struct
+		if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+			log.Error().Err(err).Str("json", jsonStr).Msg("failed to parse gemini JSON")
+			return fmt.Errorf("failed to unmarshal gemini response: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Clamp all scores to valid range
+	for i := range result.Items {
+		result.Items[i].Score = ClampScore(result.Items[i].Score)
 	}
 
 	log.Info().Str("merchant", result.Merchant).Int("items", len(result.Items)).Msg("successfully parsed and scored receipt")
 	return &result, nil
 }
+

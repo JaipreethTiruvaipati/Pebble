@@ -24,7 +24,7 @@ import (
 // builds the Chi router via SetupRouter, starts the HTTP server on cfg.Port, and shuts
 // down gracefully on SIGINT or SIGTERM.
 func main() {
-	// Configure JSON logger
+	// Configure logger — json in production, console in development
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Str("service", "api-gateway").Logger()
 
@@ -79,7 +79,7 @@ func main() {
 	<-quit
 	log.Info().Msg("shutting down server...")
 
-	ctxShutDown, cancelShutDown := context.WithTimeout(context.Background(), 5*time.Second)
+	ctxShutDown, cancelShutDown := context.WithTimeout(context.Background(), cfg.GracefulShutdownTimeout)
 	defer cancelShutDown()
 	if err := srv.Stop(ctxShutDown); err != nil {
 		log.Fatal().Err(err).Msg("server forced to shutdown")

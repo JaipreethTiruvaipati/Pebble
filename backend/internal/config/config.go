@@ -21,8 +21,17 @@ type Config struct {
 	CORSAllowedOrigins string // comma-separated browser origins
 	BillServiceURL     string // bill upload service base URL
 
+	// ── Logging ──────────────────────────────────────────────────────────────
+	LogLevel  string // "debug" | "info" | "warn" | "error" (default: "info")
+	LogFormat string // "json" (production) | "text" (dev console writer)
+
+	// ── Graceful Shutdown ───────────────────────────────────────────────────
+	GracefulShutdownTimeout time.Duration // max wait for in-flight requests (default: 10s)
+
 	// ── Database ──────────────────────────────────────────────────────────────
-	DatabaseURL string // full PostgreSQL DSN: postgres://user:pass@host:port/db
+	DatabaseURL        string // full PostgreSQL DSN: postgres://user:pass@host:port/db
+	DatabaseMaxOpenConns int32 // pgxpool MaxConns (default: 25)
+	DatabaseMaxIdleConns int32 // pgxpool MinConns (default: 5)
 
 	// ── Redis ─────────────────────────────────────────────────────────────────
 	RedisURL string // redis://host:6379
@@ -82,8 +91,17 @@ func Load() (*Config, error) {
 		CORSAllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"),
 		BillServiceURL:     getEnv("BILL_SERVICE_URL", "http://localhost:8081"),
 
+		// Logging
+		LogLevel:  getEnv("LOG_LEVEL", "info"),
+		LogFormat: getEnv("LOG_FORMAT", "text"),
+
+		// Graceful Shutdown
+		GracefulShutdownTimeout: time.Duration(getEnvInt("GRACEFUL_SHUTDOWN_TIMEOUT", 10)) * time.Second,
+
 		// Database — required; the service is useless without it
-		DatabaseURL: mustGetEnv("DATABASE_URL"),
+		DatabaseURL:        mustGetEnv("DATABASE_URL"),
+		DatabaseMaxOpenConns: int32(getEnvInt("DATABASE_MAX_OPEN_CONNS", 25)),
+		DatabaseMaxIdleConns: int32(getEnvInt("DATABASE_MAX_IDLE_CONNS", 5)),
 
 		// Redis — required for rate limiting and caching
 		RedisURL: mustGetEnv("REDIS_URL"),

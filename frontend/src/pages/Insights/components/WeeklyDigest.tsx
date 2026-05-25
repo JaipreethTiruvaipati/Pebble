@@ -8,7 +8,7 @@ export function WeeklyDigest() {
   if (isLoading || !data) return <Skeleton className="h-56 rounded-3xl" />;
 
   const diff = data.trend_vs_last_week_pct;
-  const topCat = data.top_categories[0]?.category ?? "—";
+  const topCat = data.top_categories?.[0]?.category ?? "—";
 
   return (
     <div className="rounded-3xl border border-border bg-card p-6">

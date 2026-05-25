@@ -101,12 +101,22 @@ function RootShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+import { ToastContainer } from "./components/ui/Toast";
+import { ErrorBoundary } from "./components/layout/ErrorBoundary";
+import { useGlobalErrorHandler } from "./hooks/useGlobalErrorHandler";
+import { useNotifications } from "./hooks/useNotifications";
+
 function RootComponent() {
   const { queryClient } = rootRoute.useRouteContext();
+  useGlobalErrorHandler();
+  useNotifications();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <ErrorBoundary>
+        <Outlet />
+        <ToastContainer />
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }
@@ -228,7 +238,19 @@ const routeTree = rootRoute.addChildren([
 ]);
 
 export const getRouter = () => {
-  const queryClient = new QueryClient();
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: (failureCount, error: any) => {
+          // Don't retry auth errors or rate limit errors
+          if (error?.status === 401 || error?.status === 403 || error?.status === 429) {
+            return false;
+          }
+          return failureCount < 3;
+        },
+      },
+    },
+  });
 
   const router = createRouter({
     routeTree,
