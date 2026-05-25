@@ -8,7 +8,7 @@ export function CategoryBarChart() {
   const { data, isLoading } = useWeeklyInsights();
   if (isLoading || !data) return <Skeleton className="h-80 rounded-3xl" />;
 
-  const categories = data.top_categories.length
+  const categories = data.top_categories?.length
     ? data.top_categories
     : [{ category: "No data", amount: 0, pct: 0 }];
   const max = Math.max(...categories.map((c) => c.amount), 1);

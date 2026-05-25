@@ -50,6 +50,8 @@ interface AuthStore {
   hydrate: () => void;
 }
 
+let profileFetchPromise: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthStore>((set, get) => ({
   user: null,
   profile: null,
@@ -75,19 +77,30 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ user: null, profile: null, isAuthenticated: false });
       return;
     }
-    set({ isLoading: true });
+    
+    // Deduplicate concurrent profile fetches
+    if (profileFetchPromise) return profileFetchPromise;
+
+    profileFetchPromise = (async () => {
+      try {
+        const profile = await authApi.getMe();
+        set({
+          profile,
+          user: profileToUser(profile),
+          isAuthenticated: true,
+        });
+      } catch (error: any) {
+        if (error?.status === 401) {
+          clearAuth();
+          set({ user: null, profile: null, isAuthenticated: false });
+        }
+      }
+    })();
+
     try {
-      const profile = await authApi.getMe();
-      set({
-        profile,
-        user: profileToUser(profile),
-        isAuthenticated: true,
-      });
-    } catch {
-      clearAuth();
-      set({ user: null, profile: null, isAuthenticated: false });
+      await profileFetchPromise;
     } finally {
-      set({ isLoading: false });
+      profileFetchPromise = null;
     }
   },
 
