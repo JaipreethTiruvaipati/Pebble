@@ -7,16 +7,24 @@ on:
 
 env:
   AWS_REGION: ap-south-1
-  ECR_REPOSITORY: pebble-backend
+  ECR_REGISTRY_ALIAS: pebble
   ECS_CLUSTER: pebble-cluster
-  API_SERVICE: api-gateway
-  PENALTY_SERVICE: penalty-service
 
 jobs:
-  deploy:
-    name: Build & Deploy to ECS
+  build-and-push:
+    name: Build & Push All Service Images
     runs-on: ubuntu-latest
     environment: production
+    strategy:
+      matrix:
+        service:
+          - api-gateway
+          - bill-service
+          - scoring-service
+          - penalty-service
+          - investment-service
+          - market-poller
+          - notification-service
 
     steps:
     - name: Checkout
@@ -33,36 +41,49 @@ jobs:
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Build, tag, and push image to Amazon ECR
-      id: build-image
+    - name: Build, tag, and push ${{ matrix.service }}
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         IMAGE_TAG: ${{ github.sha }}
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        docker build \
+          --build-arg SERVICE=${{ matrix.service }} \
+          -t $ECR_REGISTRY/pebble-${{ matrix.service }}:$IMAGE_TAG \
+          -t $ECR_REGISTRY/pebble-${{ matrix.service }}:latest \
+          -f backend/Dockerfile .
+        docker push $ECR_REGISTRY/pebble-${{ matrix.service }}:$IMAGE_TAG
+        docker push $ECR_REGISTRY/pebble-${{ matrix.service }}:latest
 
-    - name: Download task definition
-      run: |
-        aws ecs describe-task-definition --task-definition pebble-task-def --query taskDefinition > task-definition.json
+  deploy:
+    name: Deploy Services to ECS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
 
-    - name: Fill in the new image ID in the Amazon ECS task definition
-      id: task-def
-      uses: aws-actions/amazon-ecs-render-task-definition@v1
+    steps:
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        task-definition: task-definition.json
-        container-name: api-gateway
-        image: ${{ steps.build-image.outputs.image }}
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
 
-    - name: Deploy Amazon ECS task definition
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-      with:
-        task-definition: ${{ steps.task-def.outputs.task-definition }}
-        service: ${{ env.API_SERVICE }}
-        cluster: ${{ env.ECS_CLUSTER }}
-        wait-for-service-stability: true
-
-    - name: Update Penalty Service ECS Service
+    - name: Force new deployment on all ECS services
       run: |
-        aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.PENALTY_SERVICE }} --force-new-deployment
+        SERVICES=(
+          api-gateway
+          bill-service
+          scoring-service
+          penalty-service
+          investment-service
+          market-poller
+          notification-service
+        )
+        for svc in "${SERVICES[@]}"; do
+          echo "🚀 Deploying $svc..."
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service "$svc" \
+            --force-new-deployment \
+            --no-cli-pager || echo "⚠️  $svc not found in ECS — skipping"
+        done

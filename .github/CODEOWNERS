@@ -15,12 +15,13 @@
 /go.mod                                @jaipreeth
 /go.sum                                @jaipreeth
 /.env.example                          @jaipreeth
+/backend/Dockerfile                    @jaipreeth
 /.github/workflows/backend-ci.yml      @jaipreeth
 /.github/workflows/deploy.yml          @jaipreeth
 
 # Sainath owns all frontend
 /frontend/                             @sainath
-/.env.frontend.example                 @sainath
+/frontend/.env.example                 @sainath
 /.github/workflows/frontend-ci.yml    @sainath
 
 # Both must approve any contracts/ or root config changes

@@ -1,4 +1,7 @@
+.env
 .env.local
+.env.*.local
+
 keys/
 *.pem
 coverage.out

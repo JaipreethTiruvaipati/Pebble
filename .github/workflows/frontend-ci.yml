@@ -36,26 +36,12 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Run tests
-        run: npm run test
-        working-directory: frontend
+  # NOTE: Add a 'test' job here once vitest is configured in frontend/package.json.
+  # Example: "test": "vitest run" in scripts.
 
   build:
     name: Build (verify)
-    needs: [lint-typecheck, test]
+    needs: [lint-typecheck]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

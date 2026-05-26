@@ -1,19 +1,20 @@
 version: "3.9"
 
 services:
+  # ── Infrastructure ─────────────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: pebble-postgres
     environment:
-      POSTGRES_USER: ss
-      POSTGRES_PASSWORD: ss
-      POSTGRES_DB: pebble
+      POSTGRES_USER: ${POSTGRES_USER:-ss}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ss}
+      POSTGRES_DB: ${POSTGRES_DB:-pebble}
     ports:
-      - "5433:5432"   # host 5433 avoids conflict with local Homebrew Postgres on 5432
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ss -d pebble"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ss} -d ${POSTGRES_DB:-pebble}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -34,20 +35,25 @@ services:
     container_name: pebble-rabbitmq
     ports:
       - "5672:5672"
-      - "15672:15672"   # management UI: http://localhost:15672 (ss/ss)
+      - "15672:15672"   # management UI: http://localhost:15672
     environment:
-      RABBITMQ_DEFAULT_USER: ss
-      RABBITMQ_DEFAULT_PASS: ss
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-ss}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-ss}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ── Application Services ───────────────────────────────────────────────────
+  # All services use the unified backend/Dockerfile with a SERVICE build arg.
+
   api-gateway:
     build:
       context: .
-      dockerfile: backend/cmd/api-gateway/Dockerfile
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: api-gateway
     container_name: pebble-api-gateway
     ports:
       - "8080:8080"
@@ -64,7 +70,9 @@ services:
   bill-service:
     build:
       context: .
-      dockerfile: backend/cmd/bill-service/Dockerfile
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: bill-service
     container_name: pebble-bill-service
     depends_on:
       rabbitmq:
@@ -75,7 +83,9 @@ services:
   scoring-service:
     build:
       context: .
-      dockerfile: backend/cmd/scoring-service/Dockerfile
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: scoring-service
     container_name: pebble-scoring-service
     depends_on:
       rabbitmq:
@@ -88,7 +98,9 @@ services:
   penalty-service:
     build:
       context: .
-      dockerfile: backend/cmd/penalty-service/Dockerfile
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: penalty-service
     container_name: pebble-penalty-service
     depends_on:
       postgres:
@@ -101,7 +113,9 @@ services:
   investment-service:
     build:
       context: .
-      dockerfile: backend/cmd/investment-service/Dockerfile
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: investment-service
     container_name: pebble-investment-service
     depends_on:
       postgres:
@@ -116,7 +130,9 @@ services:
   market-poller:
     build:
       context: .
-      dockerfile: backend/cmd/market-poller/Dockerfile
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: market-poller
     container_name: pebble-market-poller
     depends_on:
       redis:
@@ -127,7 +143,9 @@ services:
   notification-service:
     build:
       context: .
-      dockerfile: backend/cmd/notification-service/Dockerfile
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: notification-service
     container_name: pebble-notification-service
     depends_on:
       rabbitmq:

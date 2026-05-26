@@ -5,9 +5,9 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
-	"math/rand"
-	"time"
 
 	"github.com/jaipreeth/pebble/backend/internal/config"
 	"github.com/rs/zerolog/log"
@@ -38,9 +38,12 @@ func NewOTPService(cfg *config.Config) *OTPService {
 // In development, logs OTP and skips SMS to avoid cost. Production will persist OTP
 // in Redis with TTL and call SNS/Msg91; login handler compares user input via VerifyOTP.
 func (s *OTPService) SendOTP(ctx context.Context, phone string) (string, error) {
-	// Generate a random 6-digit OTP
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	otp := fmt.Sprintf("%06d", r.Intn(1000000))
+	// Generate a cryptographically secure 6-digit OTP
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("failed to generate secure OTP: %w", err)
+	}
+	otp := fmt.Sprintf("%06d", binary.BigEndian.Uint64(b[:])%1000000)
 
 	// In development, we don't actually want to send real SMS and incur costs.
 	if s.cfg.IsDevelopment() {
