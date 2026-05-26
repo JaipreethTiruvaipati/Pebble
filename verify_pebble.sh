@@ -17,7 +17,7 @@ echo "🚀 Starting Pebble Automated Verification Pipeline..."
 # 1. Infrastructure Spin-Up
 echo "📦 Spinning up Docker infrastructure..."
 # We use --build to ensure we're testing the latest code
-docker-compose up -d --build
+docker compose up -d --build
 
 # Define cleanup function to run on exit or failure
 cleanup() {
@@ -30,7 +30,7 @@ cleanup() {
     fi
     
     echo "🧹 Cleaning up Docker environment..."
-    docker-compose down
+    docker compose down
     
     if [ $exit_code -eq 0 ]; then
         echo ""

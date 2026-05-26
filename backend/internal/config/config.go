@@ -98,16 +98,18 @@ func Load() (*Config, error) {
 		// Graceful Shutdown
 		GracefulShutdownTimeout: time.Duration(getEnvInt("GRACEFUL_SHUTDOWN_TIMEOUT", 10)) * time.Second,
 
-		// Database — required; the service is useless without it
-		DatabaseURL:        mustGetEnv("DATABASE_URL"),
+		// Database — services that need Postgres call db.Connect which validates the URL.
+		// Using getEnv (not mustGetEnv) so services like market-poller and notification-service
+		// that don't use Postgres can start without DATABASE_URL.
+		DatabaseURL:        getEnv("DATABASE_URL", ""),
 		DatabaseMaxOpenConns: int32(getEnvInt("DATABASE_MAX_OPEN_CONNS", 25)),
 		DatabaseMaxIdleConns: int32(getEnvInt("DATABASE_MAX_IDLE_CONNS", 5)),
 
-		// Redis — required for rate limiting and caching
-		RedisURL: mustGetEnv("REDIS_URL"),
+		// Redis — services that need Redis call cache.Connect which validates the URL.
+		RedisURL: getEnv("REDIS_URL", ""),
 
-		// RabbitMQ — required for async pipeline
-		RabbitMQURL: mustGetEnv("RABBITMQ_URL"),
+		// RabbitMQ — services that need RabbitMQ call queue.Connect which validates the URL.
+		RabbitMQURL: getEnv("RABBITMQ_URL", ""),
 
 		// JWT
 		JWTPrivateKeyPath:    getEnv("JWT_PRIVATE_KEY_PATH", "./keys/private.pem"),

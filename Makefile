@@ -73,7 +73,7 @@ SERVICES = api-gateway bill-service scoring-service penalty-service \
 docker-build:
 	@for svc in $(SERVICES); do \
 		echo "▶ Building $$svc..."; \
-		docker build -t pebble-$$svc:latest -f backend/cmd/$$svc/Dockerfile .; \
+		docker build --build-arg SERVICE=$$svc -t pebble-$$svc:latest -f backend/Dockerfile .; \
 	done
 
 docker-push:

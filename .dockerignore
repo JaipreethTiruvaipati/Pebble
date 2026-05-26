@@ -1,0 +1,41 @@
+# ── Pebble .dockerignore ─────────────────────────────────────────────────────
+# Keep the Docker build context minimal and secure.
+# Prevents secrets, keys, git history, and frontend from leaking into images.
+
+# Secrets & Keys — NEVER include in images
+.env
+.env.local
+.env.*.local
+.env.example
+.env.frontend.example
+keys/
+*.pem
+
+# Git & GitHub
+.git
+.github
+
+# Frontend (irrelevant to backend builds)
+frontend/
+node_modules/
+package.json
+package-lock.json
+
+# Infrastructure & Config (not needed at runtime)
+infra/
+contracts/
+tests/
+
+# Build artifacts & OS junk
+coverage.out
+coverage.html
+*.md
+.DS_Store
+Tree.md
+
+# Terraform
+*.tfvars
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
